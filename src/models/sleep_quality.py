@@ -1,0 +1,402 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+import pandas as pd
+import pickle
+import os
+import yaml
+import json
+from datetime import datetime
+
+class SleepQualityLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, dropout=0.2):
+        super(SleepQualityLSTM, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0
+        )
+        
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(hidden_size, 1)
+    
+    def forward(self, x):
+        # Initialize hidden state with zeros
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        
+        # Forward propagate LSTM
+        out, _ = self.lstm(x, (h0, c0))
+        
+        # Get the last time step
+        out = out[:, -1, :]
+        
+        # Apply dropout
+        out = self.dropout(out)
+        
+        # Apply fully connected layer
+        out = self.fc(out)
+        
+        return out
+
+class SleepQualityModel:
+    def __init__(self, config_path='config/model_config.yaml'):
+        """Initialize the sleep quality model"""
+        # Load configuration
+        with open(config_path, 'r') as file:
+            config = yaml.safe_load(file)
+            self.config = config['sleep_quality_model']
+        
+        self.model = None
+        self.feature_columns = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    def preprocess_data(self, data, sequence_length=7):
+        """Preprocess data for the model"""
+        # Ensure features are in the right format
+        required_features = self.config['features']
+        available_features = [col for col in required_features if col in data.columns]
+        
+        if len(available_features) < len(required_features):
+            missing = set(required_features) - set(available_features)
+            print(f"Warning: Missing features: {missing}")
+        
+        # Group by user to create sequences
+        user_groups = data.groupby('user_id')
+        
+        sequences = []
+        targets = []
+        user_ids = []
+        dates = []
+        
+        for user_id, group in user_groups:
+            # Sort by date
+            group = group.sort_values('date')
+            
+            # Convert to numpy for easier slicing
+            user_data = group[available_features].values
+            
+            # Create sequences
+            for i in range(len(user_data) - sequence_length):
+                seq = user_data[i:i+sequence_length]
+                target = group.iloc[i+sequence_length]['sleep_efficiency']
+                
+                sequences.append(seq)
+                targets.append(target)
+                user_ids.append(user_id)
+                dates.append(group.iloc[i+sequence_length]['date'])
+        
+        # Convert to tensors
+        X = torch.FloatTensor(np.array(sequences))
+        y = torch.FloatTensor(np.array(targets)).view(-1, 1)
+        
+        return X, y, user_ids, dates, available_features
+    
+    def train(self, train_data, val_data=None, sequence_length=7):
+        """Train the sleep quality model"""
+        # Preprocess data
+        X_train, y_train, _, _, available_features = self.preprocess_data(train_data, sequence_length)
+        
+        if val_data is not None:
+            X_val, y_val, _, _, _ = self.preprocess_data(val_data, sequence_length)
+        else:
+            # Use 20% of training data as validation
+            split_idx = int(0.8 * len(X_train))
+            X_val = X_train[split_idx:]
+            y_val = y_train[split_idx:]
+            X_train = X_train[:split_idx]
+            y_train = y_train[:split_idx]
+        
+        # Store feature columns
+        self.feature_columns = available_features
+        
+        # Initialize model
+        input_size = len(available_features)
+        hidden_size = self.config['hyperparameters']['hidden_size']
+        num_layers = self.config['hyperparameters']['num_layers']
+        dropout = self.config['hyperparameters']['dropout']
+        
+        self.model = SleepQualityLSTM(input_size, hidden_size, num_layers, dropout).to(self.device)
+        
+        # Training parameters
+        learning_rate = self.config['hyperparameters']['learning_rate']
+        batch_size = self.config['hyperparameters']['batch_size']
+        num_epochs = self.config['hyperparameters']['epochs']
+        
+        # Loss function and optimizer
+        criterion = nn.MSELoss()
+        optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+        
+        # Move data to device
+        X_train = X_train.to(self.device)
+        y_train = y_train.to(self.device)
+        X_val = X_val.to(self.device)
+        y_val = y_val.to(self.device)
+        
+        # Training loop
+        train_losses = []
+        val_losses = []
+        
+        for epoch in range(num_epochs):
+            # Training
+            self.model.train()
+            train_loss = 0
+            
+            # Process in batches
+            for i in range(0, len(X_train), batch_size):
+                # Get batch
+                X_batch = X_train[i:i+batch_size]
+                y_batch = y_train[i:i+batch_size]
+                
+                # Forward pass
+                outputs = self.model(X_batch)
+                loss = criterion(outputs, y_batch)
+                
+                # Backward and optimize
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                train_loss += loss.item()
+            
+            # Validation
+            self.model.eval()
+            with torch.no_grad():
+                val_outputs = self.model(X_val)
+                val_loss = criterion(val_outputs, y_val).item()
+            
+            # Record losses
+            train_loss = train_loss / (len(X_train) // batch_size)
+            train_losses.append(train_loss)
+            val_losses.append(val_loss)
+            
+            if (epoch + 1) % 5 == 0:
+                print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+        
+        # Return training history
+        return {
+            'train_losses': train_losses,
+            'val_losses': val_losses,
+            'features': available_features
+        }
+    
+    def predict(self, data, sequence_length=7):
+        """Make predictions with the trained model"""
+        if self.model is None:
+            raise ValueError("Model not trained or loaded")
+        
+        # Preprocess data
+        X, _, user_ids, dates, _ = self.preprocess_data(data, sequence_length)
+        
+        # Move to device
+        X = X.to(self.device)
+        
+        # Set model to evaluation mode
+        self.model.eval()
+        
+        # Make predictions
+        with torch.no_grad():
+            predictions = self.model(X).cpu().numpy().flatten()
+        
+        # Create results dataframe
+        results = pd.DataFrame({
+            'user_id': user_ids,
+            'date': dates,
+            'predicted_sleep_efficiency': predictions
+        })
+        
+        return results
+    
+    def calculate_sleep_score(self, sleep_efficiency, subjective_rating=None, additional_metrics=None):
+        """Calculate an overall sleep score based on sleep efficiency and other metrics"""
+        # Base score from sleep efficiency (0.0-1.0 scale)
+        base_score = sleep_efficiency * 100
+        
+        # Adjust based on subjective rating if available (1-10 scale)
+        if subjective_rating is not None:
+            # Combine objective and subjective measures (70% objective, 30% subjective)
+            adjusted_score = 0.7 * base_score + 0.3 * (subjective_rating * 10)
+        else:
+            adjusted_score = base_score
+        
+        # Additional adjustments based on other metrics
+        if additional_metrics is not None:
+            # Examples of additional adjustments:
+            
+            # Deep sleep percentage (ideal: 15-25%)
+            if 'deep_sleep_percentage' in additional_metrics:
+                deep_pct = additional_metrics['deep_sleep_percentage']
+                if deep_pct < 0.15:
+                    # Penalize low deep sleep
+                    adjusted_score -= (0.15 - deep_pct) * 20
+                elif deep_pct > 0.25:
+                    # Slight bonus for extra deep sleep, up to a point
+                    adjusted_score += min((deep_pct - 0.25) * 10, 5)
+            
+            # REM sleep percentage (ideal: 20-25%)
+            if 'rem_sleep_percentage' in additional_metrics:
+                rem_pct = additional_metrics['rem_sleep_percentage']
+                if rem_pct < 0.2:
+                    # Penalize low REM sleep
+                    adjusted_score -= (0.2 - rem_pct) * 15
+            
+            # Sleep onset latency (ideal: under 20 minutes)
+            if 'sleep_onset_latency_minutes' in additional_metrics:
+                latency = additional_metrics['sleep_onset_latency_minutes']
+                if latency > 20:
+                    # Penalize long sleep onset
+                    adjusted_score -= min((latency - 20) * 0.5, 10)
+            
+            # Awakenings count
+            if 'awakenings_count' in additional_metrics:
+                awakenings = additional_metrics['awakenings_count']
+                if awakenings > 2:
+                    # Penalize many awakenings
+                    adjusted_score -= min((awakenings - 2) * 2.5, 15)
+        
+        # Ensure score is in valid range (0-100)
+        final_score = max(0, min(100, adjusted_score))
+        
+        return int(round(final_score))
+    
+    def save(self, filepath):
+        """Save the trained model and metadata"""
+        if self.model is None:
+            raise ValueError("No trained model to save")
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        
+        # Save model state
+        torch.save(self.model.state_dict(), f"{filepath}.pt")
+        
+        # Save metadata
+        metadata = {
+            'feature_columns': self.feature_columns,
+            'hyperparameters': self.config['hyperparameters'],
+            'creation_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        with open(f"{filepath}_metadata.json", 'w') as f:
+            json.dump(metadata, f)
+        
+        print(f"Model saved to {filepath}")
+    
+    def load(self, filepath):
+        """Load a trained model and metadata"""
+        # Load metadata
+        with open(f"{filepath}_metadata.json", 'r') as f:
+            metadata = json.load(f)
+        
+        # Extract parameters
+        self.feature_columns = metadata['feature_columns']
+        hyperparameters = metadata['hyperparameters']
+        
+        # Initialize model
+        input_size = len(self.feature_columns)
+        hidden_size = hyperparameters['hidden_size']
+        num_layers = hyperparameters['num_layers']
+        dropout = hyperparameters['dropout']
+        
+        self.model = SleepQualityLSTM(input_size, hidden_size, num_layers, dropout).to(self.device)
+        
+        # Load model state
+        self.model.load_state_dict(torch.load(f"{filepath}.pt", map_location=self.device))
+        self.model.eval()
+        
+        print(f"Model loaded from {filepath}")
+        
+    def generate_model_card(self, filepath, performance_metrics=None, training_data_description=None):
+        """Generate a model card for the sleep quality model"""
+        if self.model is None:
+            raise ValueError("No trained model available")
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        
+        # Model card content
+        model_card = {
+            "model_name": "Sleep Quality Prediction Model",
+            "version": "1.0",
+            "created_date": datetime.now().strftime("%Y-%m-%d"),
+            "model_type": "LSTM Neural Network",
+            "purpose": "Predict sleep efficiency and calculate sleep quality scores",
+            "features": self.feature_columns,
+            "hyperparameters": self.config['hyperparameters'],
+            "architecture": {
+                "input_size": len(self.feature_columns),
+                "hidden_size": self.config['hyperparameters']['hidden_size'],
+                "num_layers": self.config['hyperparameters']['num_layers'],
+                "dropout": self.config['hyperparameters']['dropout']
+            },
+            "performance_metrics": performance_metrics or {},
+            "training_data": training_data_description or "Not specified",
+            "intended_use": "Analyzing sleep patterns and providing personalized sleep quality scores",
+            "limitations": [
+                "Requires at least 7 days of consecutive sleep data",
+                "May not be accurate for users with highly irregular sleep patterns",
+                "Not clinically validated for sleep disorder diagnosis"
+            ],
+            "ethical_considerations": [
+                "Should not be used as the sole basis for medical decisions",
+                "Privacy considerations for handling sensitive sleep data"
+            ],
+            "maintenance": {
+                "recommended_retraining_frequency": "Every 3 months with new data",
+                "data_drift_monitoring": "Implemented to detect changes in feature distributions"
+            }
+        }
+        
+        # Save model card
+        with open(filepath, 'w') as f:
+            json.dump(model_card, f, indent=2)
+        
+        # Also create a markdown version
+        md_filepath = filepath.replace('.json', '.md')
+        with open(md_filepath, 'w') as f:
+            f.write(f"# {model_card['model_name']} v{model_card['version']}\n\n")
+            f.write(f"**Created:** {model_card['created_date']}\n\n")
+            
+            f.write("## Purpose\n")
+            f.write(f"{model_card['purpose']}\n\n")
+            
+            f.write("## Model Type\n")
+            f.write(f"{model_card['model_type']}\n\n")
+            
+            f.write("## Features\n")
+            for feature in model_card['features']:
+                f.write(f"- {feature}\n")
+            f.write("\n")
+            
+            f.write("## Architecture\n")
+            for key, value in model_card['architecture'].items():
+                f.write(f"- {key}: {value}\n")
+            f.write("\n")
+            
+            if performance_metrics:
+                f.write("## Performance Metrics\n")
+                for metric, value in model_card['performance_metrics'].items():
+                    f.write(f"- {metric}: {value}\n")
+                f.write("\n")
+            
+            f.write("## Limitations\n")
+            for limitation in model_card['limitations']:
+                f.write(f"- {limitation}\n")
+            f.write("\n")
+            
+            f.write("## Ethical Considerations\n")
+            for consideration in model_card['ethical_considerations']:
+                f.write(f"- {consideration}\n")
+            f.write("\n")
+            
+            f.write("## Maintenance\n")
+            for key, value in model_card['maintenance'].items():
+                f.write(f"- {key}: {value}\n")
+        
+        print(f"Model card saved to {filepath} and {md_filepath}")

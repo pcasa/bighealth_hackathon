@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    environment:
+      - ENV=dev
+    ports:
+      - "8000:8000"  # API port
+
+  n8n:
+    image: n8nio/n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./n8n_workflows:/home/node/.n8n/workflows
+    environment:
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+    depends_on:
+      - app

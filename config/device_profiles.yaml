@@ -1,0 +1,69 @@
+# Device profiles configuration
+
+apple_watch:
+  data_fields:
+    - heart_rate
+    - sleep_stages
+    - movement_intensity
+    - blood_oxygen
+    - hrv
+  heart_rate:
+    sampling_rate_minutes: 5
+    accuracy: 0.98
+    normal_range: [40, 180]
+  sleep_stages:
+    types: ['Deep', 'Core', 'REM', 'Awake']
+    accuracy: 0.85
+  movement:
+    sensitivity: 0.9
+    noise_factor: 0.05
+
+google_watch:
+  data_fields:
+    - heart_rate
+    - sleep_stages
+    - movement_intensity
+  heart_rate:
+    sampling_rate_minutes: 10
+    accuracy: 0.95
+    normal_range: [40, 180]
+  sleep_stages:
+    types: ['Deep', 'Light', 'REM', 'Awake']
+    accuracy: 0.8
+  movement:
+    sensitivity: 0.85
+    noise_factor: 0.07
+
+fitbit:
+  data_fields:
+    - heart_rate
+    - sleep_stages
+    - movement_intensity
+    - hrv
+  heart_rate:
+    sampling_rate_minutes: 3
+    accuracy: 0.94
+    normal_range: [40, 180]
+  sleep_stages:
+    types: ['Deep', 'Light', 'REM', 'Awake']
+    accuracy: 0.75
+  movement:
+    sensitivity: 0.8
+    noise_factor: 0.1
+
+samsung_watch:
+  data_fields:
+    - heart_rate
+    - sleep_stages
+    - movement_intensity
+    - blood_oxygen
+  heart_rate:
+    sampling_rate_minutes: 7
+    accuracy: 0.96
+    normal_range: [40, 180]
+  sleep_stages:
+    types: ['Deep', 'Light', 'REM', 'Awake']
+    accuracy: 0.78
+  movement:
+    sensitivity: 0.83
+    noise_factor: 0.08

@@ -1,0 +1,86 @@
+# Model configuration
+
+sleep_quality_model:
+  model_type: 'lstm'
+  hyperparameters:
+    hidden_size: 128
+    num_layers: 2
+    dropout: 0.2
+    learning_rate: 0.001
+    batch_size: 64
+    epochs: 50
+  features:
+    - sleep_duration
+    - sleep_efficiency
+    - awakenings_count
+    - total_awakening_time
+    - deep_sleep_percentage
+    - rem_sleep_percentage
+    - sleep_onset_latency
+    - heart_rate_variability
+    - average_heart_rate
+
+anomaly_detection_model:
+  model_type: 'isolation_forest'
+  hyperparameters:
+    n_estimators: 100
+    contamination: 0.05
+    random_state: 42
+  features:
+    - sleep_duration
+    - sleep_efficiency
+    - awakenings_count
+    - sleep_onset_latency
+    - heart_rate_variability
+
+sleep_pattern_model:
+  model_type: 'temporal_cnn'
+  hyperparameters:
+    filters: [32, 64, 128]
+    kernel_size: 3
+    pool_size: 2
+    learning_rate: 0.001
+    batch_size: 32
+    epochs: 30
+  features:
+    - sleep_stages_sequence
+    - movement_sequence
+    - heart_rate_sequence
+
+recommendation_model:
+  model_type: 'transformer'
+  hyperparameters:
+    d_model: 128
+    nhead: 4
+    num_encoder_layers: 3
+    dim_feedforward: 256
+    dropout: 0.1
+    learning_rate: 0.0005
+    batch_size: 32
+    epochs: 40
+  features:
+    - user_profile_features
+    - recent_sleep_patterns
+    - external_factors
+    - previous_recommendations
+
+transfer_learning:
+  adaptation_technique: 'fine_tuning'
+  hyperparameters:
+    min_user_samples: 7
+    learning_rate: 0.0001
+    freeze_layers: ['encoder.0', 'encoder.1']
+    fine_tuning_epochs: 10
+    regularization_weight: 0.01
+
+data_drift_detection:
+  univariate_methods:
+    - 'ks_test'
+    - 'chi_square'
+  multivariate_methods:
+    - 'pca_reconstruction'
+    - 'mmd'
+  alert_thresholds:
+    drift_score: 0.7
+    feature_importance: 0.8
+  monitoring_frequency: 'daily'
