@@ -84,3 +84,46 @@ data_drift_detection:
     drift_score: 0.7
     feature_importance: 0.8
   monitoring_frequency: 'daily'
+
+preprocessing:
+  # Data transformation settings
+  convert_dates: true
+  calculate_sleep_features: true
+  calculate_wearable_features: true
+  
+  # Consistency calculation parameters
+  max_bedtime_std_minutes: 180
+  max_waketime_std_minutes: 180
+  max_duration_std_hours: 3
+  default_consistency: 0.5
+  
+  # Missing value handling
+  missing_value_strategy: "user_mean"
+  fallback_strategy: "global_mean"
+  
+  # Merge settings
+  wearable_merge_columns:
+    - "user_id"
+    - "date"
+  wearable_drop_columns: 
+    - "heart_rate_data"
+    - "movement_data"
+    - "sleep_stage_data"
+
+feature_engineering:
+  # Feature creation settings
+  include_time_features: true
+  include_wearable_features: true 
+  include_external_features: true
+  
+  # Scaling settings
+  scaling_method: "standard"  # Options: standard, minmax, robust
+  handle_outliers: true
+  categorical_encoding: "one-hot"
+
+# Training settings that could be moved from hardcoded values
+training:
+  test_size: 0.2
+  random_state: 42
+  validation_split: 0.1
+  early_stopping_patience: 5

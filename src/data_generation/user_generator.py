@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 class UserGenerator:
     def __init__(self, config_path='config/data_generation_config.yaml'):
+        print(config_path)
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         

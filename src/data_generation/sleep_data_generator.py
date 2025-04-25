@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import os
+import json
 from datetime import datetime, timedelta, time
 
 class SleepDataGenerator:
@@ -70,20 +71,20 @@ class SleepDataGenerator:
         """Generate sleep data for a single day"""
         
         # Add variability based on pattern and user consistency
-        bedtime_variance_minutes = int(30 * (1 - user['sleep_consistency']))
-        waketime_variance_minutes = int(30 * (1 - user['sleep_consistency']))
+        bedtime_variance_minutes = max(1, int(30 * (1 - user['sleep_consistency'])))
+        waketime_variance_minutes = max(1, int(30 * (1 - user['sleep_consistency'])))
         
         if pattern == 'variable':
             var_hours = np.random.uniform(
                 pattern_params['bedtime_variance_hours'][0], 
                 pattern_params['bedtime_variance_hours'][1]
             )
-            bedtime_variance_minutes = int(var_hours * 60)
-            waketime_variance_minutes = int(var_hours * 60)
+            bedtime_variance_minutes = max(1, int(var_hours * 60))
+            waketime_variance_minutes = max(1, int(var_hours * 60))
         
         # Apply variance to base times
-        bedtime_delta = np.random.randint(-bedtime_variance_minutes, bedtime_variance_minutes)
-        waketime_delta = np.random.randint(-waketime_variance_minutes, waketime_variance_minutes)
+        bedtime_delta = np.random.randint(-bedtime_variance_minutes, bedtime_variance_minutes + 1)
+        waketime_delta = np.random.randint(-waketime_variance_minutes, waketime_variance_minutes + 1)
         
         bedtime_date = date - timedelta(days=1)  # Previous day for bedtime
         bed_hour, bed_minute = base_bedtime.hour, base_bedtime.minute

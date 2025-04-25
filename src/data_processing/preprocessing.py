@@ -2,11 +2,32 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-class DataPreprocessor:
-    def __init__(self):
+class Preprocessor:
+    def __init__(self, config=None):
         """Initialize the data preprocessor"""
         self.processed_data = None
-    
+        self.config = config or {}
+        
+        # Set defaults for missing config values
+        self.config.setdefault('convert_dates', True)
+        self.config.setdefault('calculate_sleep_features', True)
+        self.config.setdefault('calculate_wearable_features', True)
+        self.config.setdefault('max_bedtime_std_minutes', 180)
+        self.config.setdefault('max_waketime_std_minutes', 180)
+        self.config.setdefault('max_duration_std_hours', 3)
+        self.config.setdefault('default_consistency', 0.5)
+        self.config.setdefault('missing_value_strategy', 'user_mean')
+        self.config.setdefault('fallback_strategy', 'global_mean')
+
+    def process(self, users_df, sleep_data_df, wearable_data_df=None, external_factors_df=None):
+        """Process all data sources together"""
+        # Validate inputs
+        if users_df is None or sleep_data_df is None:
+            raise ValueError("Users and sleep data are required")
+            
+        # Preprocess sleep data
+        return self.preprocess_sleep_data(sleep_data_df, wearable_data_df, external_factors_df)
+
     def preprocess_sleep_data(self, sleep_data, wearable_data=None, external_data=None):
         """Preprocess and merge sleep data with wearable and external data"""
         # Convert string dates to datetime for easier processing
@@ -54,6 +75,14 @@ class DataPreprocessor:
         processed_data = self._handle_missing_values(processed_data)
         
         self.processed_data = processed_data
+        
+        # Check for essential columns before returning
+        essential_columns = ['user_id', 'date', 'sleep_efficiency']
+        missing_columns = [col for col in essential_columns if col not in processed_data.columns]
+        
+        if missing_columns:
+            print(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
+        
         return processed_data
     
     def _add_sleep_features(self, data):
