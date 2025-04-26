@@ -4,7 +4,10 @@
     {
       "parameters": {
         "path": "/api/sleep-form",
-        "responseMode": "lastNode"
+        "responseMode": "lastNode",
+        "options": {
+          "rawBody": true
+        }
       },
       "name": "Form Submission Webhook",
       "type": "n8n-nodes-base.webhook",
@@ -12,7 +15,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Extract form data\nconst formData = $input.item.json;\n\n// Format data for processing\nconst sleepEntry = {\n  user_id: formData.user_id,\n  date: new Date().toISOString().split('T')[0],\n  bedtime: formData.bedtime,\n  sleep_time: formData.sleep_time,\n  wake_time: formData.wake_time,\n  out_bed_time: formData.out_bed_time,\n  awakenings_count: parseInt(formData.awakenings_count) || 0,\n  time_awake_minutes: parseInt(formData.time_awake_minutes) || 0,\n  subjective_rating: parseInt(formData.subjective_rating) || 5,\n  no_sleep: formData.no_sleep === 'true' || formData.no_sleep === true\n};\n\n// Write to temporary CSV file\nconst fs = require('fs');\nconst path = require('path');\nconst os = require('os');\n\nconst tempFilePath = path.join(os.tmpdir(), `sleep_entry_${Date.now()}.csv`);\nconst csvContent = Object.keys(sleepEntry).join(',') + '\\n' + \n                  Object.values(sleepEntry).map(v => v === null ? '' : String(v)).join(',');\n\nfs.writeFileSync(tempFilePath, csvContent);\n\nreturn {json: {tempFile: tempFilePath, userData: sleepEntry}};"
+        "functionCode": "// Extract form data\nconst formData = $input.item.json;\n\n// Format data for API submission\nconst sleepEntry = {\n  user_id: formData.user_id,\n  date: formData.date || new Date().toISOString().split('T')[0],\n  bedtime: formData.bedtime,\n  sleep_onset_time: formData.sleep_onset_time,\n  wake_time: formData.wake_time,\n  out_bed_time: formData.out_bed_time,\n  awakenings_count: parseInt(formData.awakenings_count) || 0,\n  time_awake_minutes: parseInt(formData.time_awake_minutes) || 0,\n  subjective_rating: parseInt(formData.subjective_rating) || 5,\n  no_sleep: formData.no_sleep === 'true' || formData.no_sleep === true\n};\n\nreturn {json: {sleepEntry}};"
       },
       "name": "Process Form Data",
       "type": "n8n-nodes-base.function",
@@ -20,41 +23,77 @@
     },
     {
       "parameters": {
-        "path": "data/raw/sleep_form_data.csv",
-        "operation": "append"
+        "url": "http://localhost:8000/sleep/log",
+        "method": "POST",
+        "body": "={{ $node[\"Process Form Data\"].json[\"sleepEntry\"] }}",
+        "options": {}
       },
-      "name": "Append to CSV",
-      "type": "n8n-nodes-base.fileOperations",
-      "position": [600, 200]
+      "name": "Send to API",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [600, 300]
     },
     {
       "parameters": {
-        "command": "python scripts/sleep_advisor.py --form-data-file={{$node[\"Process Form Data\"].json[\"tempFile\"]}} --output-dir=data/recommendations"
+        "functionCode": "// Extract and format all insights from API response\nconst response = $input.item.json;\n\nif (response.status === 'success') {\n  // Format the sleep score as a percentage with color indicator\n  let scoreColor = '#ff0000'; // Red for poor sleep\n  if (response.sleep_score >= 70) {\n    scoreColor = '#00ff00'; // Green for good sleep\n  } else if (response.sleep_score >= 50) {\n    scoreColor = '#ffcc00'; // Yellow/orange for moderate sleep\n  }\n  \n  // Format the trend with emoji\n  let trendEmoji = '➡️';\n  if (response.predictions.expected_improvement === 'increasing') {\n    trendEmoji = '⬆️';\n  } else if (response.predictions.expected_improvement === 'decreasing') {\n    trendEmoji = '⬇️';\n  }\n  \n  // Format the recommendation with header\n  const formattedRecommendation = '💡 **Today\\'s Recommendation:** ' + response.recommendation;\n  \n  // Format predictions section\n  let predictionsText = '🔮 **Predictions for Tomorrow:**\\n';\n  \n  if (response.predictions.estimated_next_efficiency) {\n    predictionsText += `- Expected sleep efficiency: ${response.predictions.estimated_next_efficiency}%\\n`;\n  }\n  \n  if (response.predictions.optimal_bedtime && response.predictions.optimal_waketime) {\n    predictionsText += `- Optimal sleep window: ${response.predictions.optimal_bedtime} to ${response.predictions.optimal_waketime}\\n`;\n  }\n  \n  predictionsText += `- Sleep quality trend: ${trendEmoji} ${response.predictions.expected_improvement}\\n`;\n  \n  // Create the complete message\n  const message = {\n    user_id: response.entry_date,\n    date: response.entry_date,\n    sleep_score: response.sleep_score,\n    score_color: scoreColor,\n    recommendation: formattedRecommendation,\n    predictions: predictionsText,\n    trend: response.trend,\n    consistency: response.consistency,\n    formatted_message: `**Sleep Score:** <span style=\"color:${scoreColor};font-weight:bold;\">${response.sleep_score}/100</span>\\n\\n${formattedRecommendation}\\n\\n${predictionsText}`\n  };\n  \n  return {json: message};\n} else {\n  // Return error message\n  return {\n    json: {\n      user_id: $node[\"Process Form Data\"].json.sleepEntry.user_id,\n      error: true,\n      message: response.detail || 'Error processing sleep data'\n    }\n  };\n}"
       },
-      "name": "Run Sleep Advisor",
-      "type": "n8n-nodes-base.executeCommand",
-      "position": [600, 400]
+      "name": "Format Insights",
+      "type": "n8n-nodes-base.function",
+      "position": [800, 300]
     },
     {
       "parameters": {
-        "filePath": "data/recommendations/{{$node[\"Process Form Data\"].json[\"userData\"].user_id}}_recommendations.csv",
-        "options": {
-          "maxRowCount": 1
-        }
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "user_id",
+              "value": "={{ $node[\"Format Insights\"].json[\"user_id\"] }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $node[\"Format Insights\"].json[\"formatted_message\"] }}"
+            }
+          ]
+        },
+        "options": {}
       },
-      "name": "Get Latest Recommendation",
-      "type": "n8n-nodes-base.readBinaryFile",
-      "position": [800, 400]
+      "name": "Prepare Notification",
+      "type": "n8n-nodes-base.set",
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "filePath": "data/recommendations/{{ $node[\"Format Insights\"].json[\"user_id\"] }}_insights.json",
+        "fileName": "latest",
+        "options": {}
+      },
+      "name": "Save Insights",
+      "type": "n8n-nodes-base.writeJsonFile",
+      "position": [1000, 400]
     },
     {
       "parameters": {
         "resource": "message",
-        "channel": "{{$node[\"Process Form Data\"].json[\"userData\"].user_id}}",
-        "text": "Thanks for logging your sleep today! Here's your personalized recommendation:\n\n{{$node[\"Get Latest Recommendation\"].json[\"message\"]}}"
+        "channel": "={{ $node[\"Format Insights\"].json[\"user_id\"] }}",
+        "text": "={{ $node[\"Format Insights\"].json[\"formatted_message\"] }}",
+        "otherOptions": {
+          "parse": "full"
+        }
       },
-      "name": "Send Recommendation",
+      "name": "Send Notification",
       "type": "n8n-nodes-base.slack",
-      "position": [1000, 400]
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "content": "# Sleep Insights Recorded\n\nYour sleep data has been successfully recorded and analyzed.\n\n{{ $node[\"Format Insights\"].json[\"formatted_message\"] }}\n\nCheck your app for more detailed insights and historical trends.",
+        "responseCode": 200,
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Response to User",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1200, 400]
     }
   ],
   "connections": {
@@ -73,34 +112,56 @@
       "main": [
         [
           {
-            "node": "Append to CSV",
+            "node": "Send to API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to API": {
+      "main": [
+        [
+          {
+            "node": "Format Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Insights": {
+      "main": [
+        [
+          {
+            "node": "Prepare Notification",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Run Sleep Advisor",
+            "node": "Save Insights",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Run Sleep Advisor": {
+    "Prepare Notification": {
       "main": [
         [
           {
-            "node": "Get Latest Recommendation",
+            "node": "Send Notification",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Latest Recommendation": {
+    "Save Insights": {
       "main": [
         [
           {
-            "node": "Send Recommendation",
+            "node": "Response to User",
             "type": "main",
             "index": 0
           }

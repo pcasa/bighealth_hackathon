@@ -42,8 +42,13 @@ class SleepRecommendationEngine:
         # Limit to window size
         recent_data = sorted_data.tail(window)
         
-        # Handle non-sleep nights
-        has_sleep_data = recent_data[~recent_data.get('no_sleep', False)]
+        # Handle non-sleep nights - CORRECTED CODE HERE
+        if 'no_sleep' in recent_data.columns:
+            has_sleep_data = recent_data[recent_data['no_sleep'] != True].copy()
+            no_sleep_count = len(recent_data) - len(has_sleep_data)
+        else:
+            has_sleep_data = recent_data.copy()
+            no_sleep_count = 0
         
         if len(has_sleep_data) < 2:
             return {
@@ -51,7 +56,7 @@ class SleepRecommendationEngine:
                 'consistency': 0,
                 'improvement_rate': 0,
                 'key_metrics': {
-                    'no_sleep_count': len(recent_data) - len(has_sleep_data)
+                    'no_sleep_count': no_sleep_count
                 }
             }
         
@@ -261,17 +266,17 @@ class SleepRecommendationEngine:
         """Fill in template with personalized metrics"""
         message = template
         
-        # Replace tokens with actual values
+        # Replace tokens with actual values, handling None values
         replacements = {
-            '{avg_efficiency}': f"{metrics.get('avg_efficiency', 0)*100:.0f}%",
-            '{avg_time_in_bed}': f"{metrics.get('avg_time_in_bed', 0):.1f} hours",
-            '{recent_efficiency}': f"{metrics.get('recent_efficiency', 0)*100:.0f}%",
-            '{recent_time_in_bed}': f"{metrics.get('recent_time_in_bed', 0):.1f} hours",
-            '{best_efficiency}': f"{metrics.get('best_efficiency', 0)*100:.0f}%",
-            '{avg_awakenings}': f"{metrics.get('avg_awakenings', 0):.1f}",
-            '{avg_time_awake}': f"{metrics.get('avg_time_awake', 0):.0f} minutes",
-            '{recent_rating}': f"{metrics.get('recent_rating', 0):.0f}/10",
-            '{no_sleep_count}': f"{metrics.get('no_sleep_count', 0)}"
+            '{avg_efficiency}': f"{metrics.get('avg_efficiency', 0)*100:.0f}%" if metrics.get('avg_efficiency') is not None else "N/A",
+            '{avg_time_in_bed}': f"{metrics.get('avg_time_in_bed', 0):.1f} hours" if metrics.get('avg_time_in_bed') is not None else "N/A",
+            '{recent_efficiency}': f"{metrics.get('recent_efficiency', 0)*100:.0f}%" if metrics.get('recent_efficiency') is not None else "N/A",
+            '{recent_time_in_bed}': f"{metrics.get('recent_time_in_bed', 0):.1f} hours" if metrics.get('recent_time_in_bed') is not None else "N/A",
+            '{best_efficiency}': f"{metrics.get('best_efficiency', 0)*100:.0f}%" if metrics.get('best_efficiency') is not None else "N/A",
+            '{avg_awakenings}': f"{metrics.get('avg_awakenings', 0):.1f}" if metrics.get('avg_awakenings') is not None else "N/A",
+            '{avg_time_awake}': f"{metrics.get('avg_time_awake', 0):.0f} minutes" if metrics.get('avg_time_awake') is not None else "N/A",
+            '{recent_rating}': f"{metrics.get('recent_rating', 0):.0f}/10" if metrics.get('recent_rating') is not None else "N/A",
+            '{no_sleep_count}': f"{metrics.get('no_sleep_count', 0)}" if metrics.get('no_sleep_count') is not None else "0"
         }
         
         for token, value in replacements.items():

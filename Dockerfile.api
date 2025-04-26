@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install UV package manager
+RUN pip install uv
+
+# Copy requirements first for layer caching
+COPY requirements.txt .
+RUN uv pip install -r requirements.txt
+RUN uv pip install fastapi uvicorn
+
+# Copy the rest of the application
+COPY . .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+
+# Default command
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

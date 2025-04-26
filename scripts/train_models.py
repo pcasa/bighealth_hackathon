@@ -146,6 +146,40 @@ def save_model_card(model_name, config, metrics, output_dir):
         },
         "hyperparameters": config.get('hyperparameters', {})
     }
+
+    # Add predictive capabilities section to model_card dictionary
+    model_card["predictive_capabilities"] = {
+        "sleep_quality_predictions": [
+            "Sleep efficiency trends over time based on user-reported data",
+            "Probability of experiencing insomnia on upcoming nights",
+            "Estimated sleep quality for the coming night based on recent patterns",
+            "Expected subjective ratings if certain behaviors are modified"
+        ],
+        "pattern_recognition": [
+            "Sleep consistency patterns and how they affect overall sleep quality",
+            "Identification of insomnia triggers based on correlations in the data",
+            "Detection of severe insomnia episodes before they become chronic",
+            "Recognition of improvement trends even when subjective perception lags"
+        ],
+        "personalized_insights": [
+            "Most effective sleep window based on recorded sleep efficiency data",
+            "Optimal bedtime and wake time for maximum sleep quality",
+            "Personal threshold for sleep onset latency that predicts a good night's sleep",
+            "Impact of awakenings on overall sleep quality for the individual"
+        ],
+        "behavior_impact_assessment": [
+            "Expected improvement if sleep consistency is increased",
+            "Predicted benefits of reducing time in bed for those with extended wake times",
+            "Forecasted sleep efficiency changes with various interventions",
+            "Projected recovery time after periods of severe insomnia"
+        ],
+        "long_term_predictions": [
+            "Risk of developing chronic insomnia based on current patterns",
+            "Expected timeline for improvement with consistent sleep practices",
+            "Likelihood of relapse based on pattern recognition",
+            "Long-term sleep health trajectory with and without intervention"
+        ]
+    }
     
     # Save the model card as JSON
     model_card_path = os.path.join(output_dir, 'model_cards', f"{model_name}_card.json")
@@ -194,6 +228,34 @@ def save_model_card(model_name, config, metrics, output_dir):
         f.write("- **Sleep Patterns:**\n")
         for pattern in model_card['training_data_characteristics']['sleep_patterns']:
             f.write(f"  - {pattern}\n")
+        f.write("\n")
+
+        # Add Predictive Capabilities section
+        f.write("## Predictive Capabilities\n\n")
+        
+        f.write("### Sleep Quality Predictions\n")
+        for capability in model_card['predictive_capabilities']['sleep_quality_predictions']:
+            f.write(f"- {capability}\n")
+        f.write("\n")
+        
+        f.write("### Pattern Recognition\n")
+        for capability in model_card['predictive_capabilities']['pattern_recognition']:
+            f.write(f"- {capability}\n")
+        f.write("\n")
+        
+        f.write("### Personalized Insights\n")
+        for capability in model_card['predictive_capabilities']['personalized_insights']:
+            f.write(f"- {capability}\n")
+        f.write("\n")
+        
+        f.write("### Behavior Impact Assessment\n")
+        for capability in model_card['predictive_capabilities']['behavior_impact_assessment']:
+            f.write(f"- {capability}\n")
+        f.write("\n")
+        
+        f.write("### Long-term Predictions\n")
+        for capability in model_card['predictive_capabilities']['long_term_predictions']:
+            f.write(f"- {capability}\n")
         f.write("\n")
         
         f.write("## Hyperparameters\n")

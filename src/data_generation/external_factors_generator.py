@@ -5,12 +5,12 @@ from datetime import datetime, timedelta
 class ExternalFactorsGenerator:
     def __init__(self):
         """Initialize the external factors generator"""
-        # Weather patterns (temperature, humidity, pressure)
+        # Weather patterns (temperature in Fahrenheit, humidity, pressure)
         self.weather_patterns = {
-            'winter': {'temp_range': [-10, 10], 'humidity_range': [30, 70], 'pressure_range': [990, 1020]},
-            'spring': {'temp_range': [5, 20], 'humidity_range': [40, 80], 'pressure_range': [1000, 1025]},
-            'summer': {'temp_range': [15, 35], 'humidity_range': [50, 90], 'pressure_range': [1005, 1020]},
-            'fall': {'temp_range': [0, 25], 'humidity_range': [40, 75], 'pressure_range': [995, 1015]}
+            'winter': {'temp_range': [20, 50], 'humidity_range': [30, 70], 'pressure_range': [990, 1020]},
+            'spring': {'temp_range': [40, 70], 'humidity_range': [40, 80], 'pressure_range': [1000, 1025]},
+            'summer': {'temp_range': [60, 95], 'humidity_range': [50, 90], 'pressure_range': [1005, 1020]},
+            'fall': {'temp_range': [35, 75], 'humidity_range': [40, 75], 'pressure_range': [995, 1015]}
         }
     
     def generate_weather_data(self, start_date, end_date):
@@ -55,7 +55,7 @@ class ExternalFactorsGenerator:
             
             weather_data.append({
                 'date': date.strftime('%Y-%m-%d'),
-                'temperature': round(temp, 1),
+                'temperature': round(temp, 1),  # Already in Fahrenheit
                 'humidity': round(humidity, 1),
                 'pressure': round(pressure, 1),
                 'precipitation': round(precipitation, 1),

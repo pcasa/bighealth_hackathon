@@ -1,7 +1,7 @@
 # sleep_quality Model Card
 
 **Version:** 1.0.0
-**Created:** 2025-04-26 11:31:31
+**Created:** 2025-04-26 16:29:29
 
 ## Description
 Model for sleep_quality
@@ -21,8 +21,8 @@ Model for sleep_quality
 **Output:** Sleep Quality Score
 
 ## Performance Metrics
-- **final_train_loss:** 0.17845587238308294
-- **final_val_loss:** 0.528221070766449
+- **final_train_loss:** 0.2007064386197738
+- **final_val_loss:** 0.4819433093070984
 - **features_used:** ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate']
 
 ## Limitations
@@ -37,7 +37,7 @@ Model for sleep_quality
 
 ## Training Data Characteristics
 - **Number of Users:** 500
-- **Days per User:** 68
+- **Days per User:** 86
 - **Demographics:** Simulated diverse population
 - **Sleep Patterns:**
   - Normal Sleeper Pattern
@@ -45,6 +45,38 @@ Model for sleep_quality
   - Shift Worker Pattern
   - Oversleeper Pattern
   - Highly Variable Sleeper
+
+## Predictive Capabilities
+
+### Sleep Quality Predictions
+- Sleep efficiency trends over time based on user-reported data
+- Probability of experiencing insomnia on upcoming nights
+- Estimated sleep quality for the coming night based on recent patterns
+- Expected subjective ratings if certain behaviors are modified
+
+### Pattern Recognition
+- Sleep consistency patterns and how they affect overall sleep quality
+- Identification of insomnia triggers based on correlations in the data
+- Detection of severe insomnia episodes before they become chronic
+- Recognition of improvement trends even when subjective perception lags
+
+### Personalized Insights
+- Most effective sleep window based on recorded sleep efficiency data
+- Optimal bedtime and wake time for maximum sleep quality
+- Personal threshold for sleep onset latency that predicts a good night's sleep
+- Impact of awakenings on overall sleep quality for the individual
+
+### Behavior Impact Assessment
+- Expected improvement if sleep consistency is increased
+- Predicted benefits of reducing time in bed for those with extended wake times
+- Forecasted sleep efficiency changes with various interventions
+- Projected recovery time after periods of severe insomnia
+
+### Long-term Predictions
+- Risk of developing chronic insomnia based on current patterns
+- Expected timeline for improvement with consistent sleep practices
+- Likelihood of relapse based on pattern recognition
+- Long-term sleep health trajectory with and without intervention
 
 ## Hyperparameters
 - **hidden_size:** 128

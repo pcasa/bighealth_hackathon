@@ -11,6 +11,20 @@ services:
     ports:
       - "8000:8000"  # API port
 
+  api:
+    build: 
+      context: .
+      dockerfile: Dockerfile.api
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    environment:
+      - ENV=dev
+    ports:
+      - "8001:8000"  # Forward API to a different port
+    depends_on:
+      - app
+
   n8n:
     image: n8nio/n8n
     ports:
@@ -23,3 +37,4 @@ services:
       - N8N_PROTOCOL=http
     depends_on:
       - app
+      - api
