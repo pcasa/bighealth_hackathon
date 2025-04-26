@@ -1,0 +1,111 @@
+{
+  "name": "Sleep Form Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/api/sleep-form",
+        "responseMode": "lastNode"
+      },
+      "name": "Form Submission Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract form data\nconst formData = $input.item.json;\n\n// Format data for processing\nconst sleepEntry = {\n  user_id: formData.user_id,\n  date: new Date().toISOString().split('T')[0],\n  bedtime: formData.bedtime,\n  sleep_time: formData.sleep_time,\n  wake_time: formData.wake_time,\n  out_bed_time: formData.out_bed_time,\n  awakenings_count: parseInt(formData.awakenings_count) || 0,\n  time_awake_minutes: parseInt(formData.time_awake_minutes) || 0,\n  subjective_rating: parseInt(formData.subjective_rating) || 5,\n  no_sleep: formData.no_sleep === 'true' || formData.no_sleep === true\n};\n\n// Write to temporary CSV file\nconst fs = require('fs');\nconst path = require('path');\nconst os = require('os');\n\nconst tempFilePath = path.join(os.tmpdir(), `sleep_entry_${Date.now()}.csv`);\nconst csvContent = Object.keys(sleepEntry).join(',') + '\\n' + \n                  Object.values(sleepEntry).map(v => v === null ? '' : String(v)).join(',');\n\nfs.writeFileSync(tempFilePath, csvContent);\n\nreturn {json: {tempFile: tempFilePath, userData: sleepEntry}};"
+      },
+      "name": "Process Form Data",
+      "type": "n8n-nodes-base.function",
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "path": "data/raw/sleep_form_data.csv",
+        "operation": "append"
+      },
+      "name": "Append to CSV",
+      "type": "n8n-nodes-base.fileOperations",
+      "position": [600, 200]
+    },
+    {
+      "parameters": {
+        "command": "python scripts/sleep_advisor.py --form-data-file={{$node[\"Process Form Data\"].json[\"tempFile\"]}} --output-dir=data/recommendations"
+      },
+      "name": "Run Sleep Advisor",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [600, 400]
+    },
+    {
+      "parameters": {
+        "filePath": "data/recommendations/{{$node[\"Process Form Data\"].json[\"userData\"].user_id}}_recommendations.csv",
+        "options": {
+          "maxRowCount": 1
+        }
+      },
+      "name": "Get Latest Recommendation",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "position": [800, 400]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "channel": "{{$node[\"Process Form Data\"].json[\"userData\"].user_id}}",
+        "text": "Thanks for logging your sleep today! Here's your personalized recommendation:\n\n{{$node[\"Get Latest Recommendation\"].json[\"message\"]}}"
+      },
+      "name": "Send Recommendation",
+      "type": "n8n-nodes-base.slack",
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "Form Submission Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Form Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Form Data": {
+      "main": [
+        [
+          {
+            "node": "Append to CSV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Run Sleep Advisor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Sleep Advisor": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Recommendation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Recommendation": {
+      "main": [
+        [
+          {
+            "node": "Send Recommendation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

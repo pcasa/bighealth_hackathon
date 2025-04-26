@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 class UserGenerator:
     def __init__(self, config_path='config/data_generation_config.yaml'):
+        print(config_path)
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
@@ -44,7 +45,7 @@ class UserGenerator:
         device = np.random.choice(devices, p=device_weights)
         
         # Generate data consistency level (how often they might skip logging)
-        data_consistency = np.random.beta(5, 2)  # Skewed toward higher consistency
+        data_consistency = np.random.beta(12, 2)  # Skewed toward higher consistency
         
         # Generate sleep consistency (regularity of sleep patterns)
         if sleep_pattern == 'variable':
@@ -53,7 +54,7 @@ class UserGenerator:
             sleep_consistency = np.random.beta(5, 2)  # Higher consistency
         
         return {
-            'user_id': str(uuid.uuid4()),
+            'user_id': str(uuid.uuid4())[:8],
             'age': np.random.randint(age_range[0], age_range[1] + 1),
             'gender': np.random.choice(genders),
             'sleep_pattern': sleep_pattern,

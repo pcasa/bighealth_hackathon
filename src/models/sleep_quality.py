@@ -7,7 +7,7 @@ import pickle
 import os
 import yaml
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class SleepQualityLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, dropout=0.2):
@@ -57,8 +57,39 @@ class SleepQualityModel:
         self.feature_columns = None
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    """
+    Update to the preprocess_data method in SleepQualityModel class to handle potential issues
+    with user_id and date fields. Insert this updated method into your sleep_quality.py file.
+    """
+
     def preprocess_data(self, data, sequence_length=7):
-        """Preprocess data for the model"""
+        """Preprocess data for the model with improved error handling"""
+        print("Starting preprocessing with data shape:", data.shape)
+        
+        # Verify required columns are present
+        required_columns = ['user_id', 'date']
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        
+        if missing_columns:
+            error_msg = f"Missing required columns: {missing_columns}"
+            print(error_msg)
+            raise KeyError(error_msg)
+        
+        # Ensure date is in datetime format
+        if not pd.api.types.is_datetime64_any_dtype(data['date']):
+            print("Converting date column to datetime")
+            data['date'] = pd.to_datetime(data['date'], errors='coerce')
+            
+            # Check if conversion created NaT values
+            if data['date'].isna().any():
+                print("Warning: Some dates couldn't be converted to datetime")
+                # Fill NaT with dummy dates to avoid crashes
+                date_nas = data['date'].isna()
+                if date_nas.any():
+                    base_date = datetime(2024, 1, 1)
+                    dummy_dates = [base_date + timedelta(days=i) for i in range(sum(date_nas))]
+                    data.loc[date_nas, 'date'] = dummy_dates
+        
         # Ensure features are in the right format
         required_features = self.config['features']
         available_features = [col for col in required_features if col in data.columns]
@@ -66,9 +97,28 @@ class SleepQualityModel:
         if len(available_features) < len(required_features):
             missing = set(required_features) - set(available_features)
             print(f"Warning: Missing features: {missing}")
+            
+            # Create dummy columns for missing features if needed
+            for missing_feature in missing:
+                if missing_feature in self.config.get('required_features', []):
+                    error_msg = f"Required feature missing: {missing_feature}"
+                    print(error_msg)
+                    raise ValueError(error_msg)
+                else:
+                    # Fill with zeros
+                    print(f"Creating dummy column for missing feature: {missing_feature}")
+                    data[missing_feature] = 0.0
+                    available_features.append(missing_feature)
         
         # Group by user to create sequences
-        user_groups = data.groupby('user_id')
+        try:
+            user_groups = data.groupby('user_id')
+            print(f"Found {len(user_groups)} user groups")
+        except Exception as e:
+            print(f"Error grouping by user_id: {str(e)}")
+            print(f"user_id column sample: {data['user_id'].head()}")
+            print(f"user_id column type: {data['user_id'].dtype}")
+            raise
         
         sequences = []
         targets = []
@@ -79,24 +129,165 @@ class SleepQualityModel:
             # Sort by date
             group = group.sort_values('date')
             
-            # Convert to numpy for easier slicing
-            user_data = group[available_features].values
+            if len(group) <= sequence_length:
+                print(f"Warning: User {user_id} has only {len(group)} records, need at least {sequence_length+1}")
+                continue
             
-            # Create sequences
-            for i in range(len(user_data) - sequence_length):
-                seq = user_data[i:i+sequence_length]
-                target = group.iloc[i+sequence_length]['sleep_efficiency']
+            try:
+                # Convert to numpy for easier slicing
+                user_data = group[available_features].values
                 
-                sequences.append(seq)
-                targets.append(target)
-                user_ids.append(user_id)
-                dates.append(group.iloc[i+sequence_length]['date'])
+                # Create sequences
+                for i in range(len(user_data) - sequence_length):
+                    seq = user_data[i:i+sequence_length]
+                    
+                    # Ensure sleep_efficiency exists
+                    if 'sleep_efficiency' not in group.columns:
+                        print(f"Error: 'sleep_efficiency' column not found for user {user_id}")
+                        continue
+                        
+                    target = group.iloc[i+sequence_length]['sleep_efficiency']
+                    
+                    sequences.append(seq)
+                    targets.append(target)
+                    user_ids.append(user_id)
+                    dates.append(group.iloc[i+sequence_length]['date'])
+            except Exception as e:
+                print(f"Error processing user {user_id}: {str(e)}")
+                continue
+        
+        if not sequences:
+            error_msg = "No valid sequences could be created. Check your data."
+            print(error_msg)
+            raise ValueError(error_msg)
+        
+        print(f"Created {len(sequences)} sequences")
         
         # Convert to tensors
         X = torch.FloatTensor(np.array(sequences))
         y = torch.FloatTensor(np.array(targets)).view(-1, 1)
         
         return X, y, user_ids, dates, available_features
+    
+    # Add this method to your SleepQualityModel class
+
+    def train_with_limited_data(self, data):
+        """Alternative training approach when there isn't enough sequence data"""
+        print("Using alternative training method for limited data")
+        
+        # Ensure required features are present
+        required_features = self.config['features']
+        available_features = [col for col in required_features if col in data.columns]
+        
+        if len(available_features) < len(required_features):
+            missing = set(required_features) - set(available_features)
+            print(f"Warning: Missing features: {missing}")
+            
+            # Create dummy columns for missing features
+            for missing_feature in missing:
+                print(f"Creating dummy column for missing feature: {missing_feature}")
+                data[missing_feature] = 0.0
+                available_features.append(missing_feature)
+        
+        # Store feature columns
+        self.feature_columns = available_features
+        
+        # Extract features and target
+        X = data[available_features].values
+        y = data['sleep_efficiency'].values
+        
+        # Create a simple fully connected network instead of LSTM
+        input_size = len(available_features)
+        hidden_size = self.config['hyperparameters']['hidden_size']
+        
+        # Define a simple model
+        class SimpleNN(nn.Module):
+            def __init__(self, input_size, hidden_size, dropout=0.2):
+                super(SimpleNN, self).__init__()
+                self.model = nn.Sequential(
+                    nn.Linear(input_size, hidden_size),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(hidden_size, hidden_size // 2),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(hidden_size // 2, 1)
+                )
+            
+            def forward(self, x):
+                return self.model(x)
+        
+        # Initialize model
+        self.model = SimpleNN(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            dropout=self.config['hyperparameters']['dropout']
+        ).to(self.device)
+        
+        # Split data into train/validation (80/20)
+        indices = np.random.permutation(len(X))
+        split_idx = int(0.8 * len(X))
+        train_indices = indices[:split_idx]
+        val_indices = indices[split_idx:]
+        
+        # Convert to tensors
+        X_train = torch.FloatTensor(X[train_indices]).to(self.device)
+        y_train = torch.FloatTensor(y[train_indices]).view(-1, 1).to(self.device)
+        X_val = torch.FloatTensor(X[val_indices]).to(self.device)
+        y_val = torch.FloatTensor(y[val_indices]).view(-1, 1).to(self.device)
+        
+        # Training parameters
+        criterion = nn.MSELoss()
+        optimizer = optim.Adam(self.model.parameters(), lr=self.config['hyperparameters']['learning_rate'])
+        batch_size = min(self.config['hyperparameters']['batch_size'], len(X_train))
+        num_epochs = self.config['hyperparameters']['epochs']
+        
+        # Training loop
+        train_losses = []
+        val_losses = []
+        
+        for epoch in range(num_epochs):
+            # Training
+            self.model.train()
+            train_loss = 0
+            
+            # Process in batches
+            for i in range(0, len(X_train), batch_size):
+                # Get batch
+                X_batch = X_train[i:i+batch_size]
+                y_batch = y_train[i:i+batch_size]
+                
+                # Forward pass
+                outputs = self.model(X_batch)
+                loss = criterion(outputs, y_batch)
+                
+                # Backward and optimize
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                train_loss += loss.item()
+            
+            # Calculate average training loss
+            train_loss = train_loss / ((len(X_train) - 1) // batch_size + 1)
+            train_losses.append(train_loss)
+            
+            # Validation
+            self.model.eval()
+            with torch.no_grad():
+                val_outputs = self.model(X_val)
+                val_loss = criterion(val_outputs, y_val).item()
+                val_losses.append(val_loss)
+            
+            if (epoch + 1) % 5 == 0:
+                print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+        
+        # Return training history
+        return {
+            'train_losses': train_losses,
+            'val_losses': val_losses,
+            'features': available_features
+        }
     
     def train(self, train_data, val_data=None, sequence_length=7):
         """Train the sleep quality model"""

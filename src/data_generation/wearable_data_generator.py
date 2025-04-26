@@ -239,12 +239,17 @@ class WearableDataGenerator:
     
     def _generate_heart_rate_data(self, device_type, device_profile, bedtime, wake_time, sleep_efficiency, awakenings):
         """Generate heart rate data for the sleep period"""
+        # Ensure bedtime is before wake_time
+        if bedtime >= wake_time:
+            # Handle error case - generate a minimal valid dataset
+            return [60, 60]  # Return minimal valid heart rate data
+        
         # Determine sampling rate from device
         sampling_minutes = device_profile['heart_rate']['sampling_rate_minutes']
         
-        # Calculate number of samples
-        total_minutes = int((wake_time - bedtime).total_seconds() / 60)
-        num_samples = total_minutes // sampling_minutes + 1
+        # Calculate number of samples (ensure at least 1)
+        total_minutes = max(1, int((wake_time - bedtime).total_seconds() / 60))
+        num_samples = max(1, total_minutes // sampling_minutes + 1)
         
         # Base heart rate pattern: higher at start, lower during deep sleep, increases during REM
         base_hr = np.random.randint(58, 68)  # Resting heart rate
@@ -255,16 +260,17 @@ class WearableDataGenerator:
         # Initial higher heart rate during sleep onset
         initial_hr = base_hr + np.random.randint(5, 15)
         
-        # Sleep efficiency affects overall heart rate variability
+        # Sleep efficiency affects overall heart rate variability (with bounds)
+        sleep_efficiency = max(0.01, min(1.0, sleep_efficiency))  # Bound between 0.01 and 1.0
         variability = 2.0 + (1.0 - sleep_efficiency) * 10
         
         for i in range(num_samples):
-            time_fraction = i / num_samples
+            time_fraction = i / max(1, num_samples - 1)  # Avoid division by zero
             
             # Heart rate typically decreases in first third, then has periods of increase during REM
             if time_fraction < 0.2:
-                # Initial settling down period
-                hr = initial_hr - time_fraction * 5 * initial_hr / base_hr
+                # Initial settling down period (with safe calculation)
+                hr = initial_hr - time_fraction * 5  # Simplified calculation
             elif time_fraction < 0.4:
                 # Deepest sleep often in first half
                 hr = base_hr - 5
@@ -275,8 +281,9 @@ class WearableDataGenerator:
             # Add noise
             hr += np.random.normal(0, variability)
             
-            # Add spikes for awakenings
-            if awakenings > 0 and np.random.random() < (awakenings / num_samples) * 3:
+            # Add spikes for awakenings (with safe probability)
+            spike_probability = min(0.95, (awakenings / max(1, num_samples)) * 3)  # Cap at 0.95
+            if awakenings > 0 and np.random.random() < spike_probability:
                 hr += np.random.randint(10, 25)
             
             heart_rates.append(max(45, int(hr)))

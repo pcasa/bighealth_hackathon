@@ -1,0 +1,47 @@
+{
+    "onboarding": [
+      "Welcome to your sleep journey! Continue tracking your sleep patterns to receive personalized insights.",
+      "We're gathering your sleep data. Keep logging your sleep each morning to unlock personalized recommendations.",
+      "Your sleep journey is just beginning. The more consistently you track, the more personalized your insights will become."
+    ],
+    "strong_encouragement": [
+      "Fantastic progress! Your subjective sleep rating has improved to {recent_rating} and you're spending less time awake during the night. Whatever you're doing is working - keep it up!",
+      "Outstanding improvement! Your time in bed is now being used more efficiently for actual sleep.",
+      "Great progress! You're reporting fewer awakenings during the night and better overall sleep quality."
+    ],
+    "encouragement": [
+      "You're making good progress! Your sleep efficiency is trending upward, now at {recent_efficiency}.",
+      "Nice work! Your self-reported sleep quality is improving, showing your efforts are paying off.",
+      "You're on the right track! Your sleep patterns show gradual improvement. Consistency is key!"
+    ],
+    "support": [
+      "We all have ups and downs with sleep. Your recent ratings show a temporary dip, but remember you've achieved better sleep before!",
+      "Sleep improvements aren't always linear. Focus on the basics - consistent bedtime, screen-free hour before bed, cool dark room.",
+      "This week has been challenging for your sleep. Remember that progress takes time, and small setbacks are normal. What helped you achieve better sleep before?"
+    ],
+    "gentle_reminder": [
+      "Your self-reported sleep quality has decreased slightly. Consider returning to habits that previously helped you sleep better.",
+      "You're experiencing slightly more awakenings (avg: {avg_awakenings}) recently. What changes could you make tonight for better sleep?",
+      "There's been a slight decline in your sleep metrics. Sometimes small adjustments like limiting caffeine or adjusting room temperature can help get back on track."
+    ],
+    "maintenance": [
+      "Your sleep patterns have been stable with an average rating of {recent_rating}. Consider trying a new sleep hygiene practice to see if you can improve further.",
+      "You've maintained consistent time in bed of {avg_time_in_bed} hours. Great job establishing a regular routine!",
+      "Your sleep metrics remain steady. Consistency is a huge win for good sleep hygiene!"
+    ],
+    "consistency_reminder": [
+      "Regular tracking helps identify patterns. Try to log your sleep every day for the next week.",
+      "We've noticed some gaps in your sleep tracking. More consistent logging will lead to more accurate insights!",
+      "Getting back into the habit of tracking your sleep will help you recognize patterns and improvements faster."
+    ],
+    "moderate_insomnia": [
+      "We've noticed you reported {no_sleep_count} nights without sleep recently. This pattern is concerning - consider scheduling a consultation with a sleep specialist.",
+      "Having multiple nights without sleep can be very challenging. Focus on relaxation techniques rather than trying to force sleep, and consider speaking with a healthcare provider.",
+      "Multiple sleepless nights can be frustrating. Remember that even quiet restful time in bed provides some recovery, even if you're not fully asleep."
+    ],
+    "severe_insomnia": [
+      "You've reported {no_sleep_count} nights without sleep recently. This is a significant pattern that deserves professional attention - please consider consulting with a healthcare provider specializing in sleep.",
+      "Having several nights without sleep is concerning. This may require professional support - relaxation techniques and sleep hygiene alone may not be sufficient.",
+      "Multiple sleepless nights can impact your health and wellbeing significantly. We strongly encourage you to discuss these patterns with a healthcare provider."
+    ]
+  }

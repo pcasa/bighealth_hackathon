@@ -1,0 +1,53 @@
+# Recommendation Engine Configuration
+
+# Paths to resources
+templates_path: 'config/message_templates.json'
+history_path: 'data/user_message_history.json'
+
+# Analysis settings
+analysis:
+  # Window size for trend analysis (in days)
+  default_window: 14
+  # Minimum data points needed for meaningful analysis
+  min_data_points: 3
+  # Threshold values for trend detection
+  thresholds:
+    strong_improvement:
+      efficiency: 0.01  # 1% improvement per day
+      duration: 0.05    # 3 minutes improvement per day
+    regression:
+      efficiency: -0.01
+      duration: -0.05
+
+# Message selection settings
+message_selection:
+  # How many previous messages to check to avoid repetition
+  recency_window: 7
+  # Maximum history size per user
+  max_history_size: 30
+  # Force category change after consecutive messages
+  force_category_change_after: 3
+
+# Consistency thresholds
+consistency:
+  # Minimum tracking consistency to avoid consistency reminders
+  min_tracking_rate: 0.7  # 70% of days tracked
+  # Maximum standard deviation for bedtime to be considered "consistent"
+  consistent_bedtime_std_hours: 1.0
+
+# Personalization settings
+personalization:
+  # Enable/disable including specific metrics in messages
+  include_metrics: true
+  # Round numerical values in messages
+  round_efficiency: 0  # Round to integer percentage
+  round_duration: 1    # Round to 1 decimal place
+
+# Notification settings (for future integration)
+notifications:
+  # How often to generate new recommendations
+  frequency: 'daily'  # Options: daily, weekly, improvement_only
+  # Time of day to send notifications (if applicable)
+  preferred_time: '09:00'
+  # Whether to show notifications for minor changes
+  show_minor_changes: false

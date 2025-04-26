@@ -206,6 +206,106 @@ Containerized setup for easy local deployment:
 7. Run Docker: `docker-compose up`
 8. Import n8n workflows from n8n_workflows/ directory
 
+# Sleep Insights App - Recommendation System
+
+The Sleep Insights App includes a personalized recommendation system that analyzes sleep patterns from user-submitted form data and provides tailored guidance to help users improve their sleep quality.
+
+## Form Data Collection
+
+Our system primarily relies on daily sleep form submissions that capture:
+
+- Time the user went to bed
+- Time the user attempted to fall asleep
+- Number of awakenings during the night
+- Time spent awake during the night
+- Wake-up time
+- Time the user got out of bed
+- Subjective sleep quality rating (1-10)
+- Whether the user slept at all (for severe insomnia tracking)
+
+This user-reported data provides valuable insights without requiring wearable devices, making the app accessible to all users.
+
+## Recommendation Features
+
+### Progress Tracking
+- Analyzes sleep efficiency trends over time
+- Identifies improvement and regression patterns
+- Calculates consistency in sleep timing and tracking
+- Detects severe insomnia patterns (multiple nights without sleep)
+
+### Personalized Messaging
+- Adapts message tone based on user's progress
+- Provides encouragement during regression periods
+- Celebrates improvements and achievements
+- Offers actionable suggestions relevant to detected patterns
+- Provides specialized support for severe insomnia cases
+
+### Varied Content
+- Maintains engagement by avoiding repetitive messages
+- References specific sleep metrics to provide context
+- Progressively introduces sleep hygiene concepts
+
+## How Recommendations Work
+
+The recommendation engine follows this process:
+
+1. **Data Collection**: Sleep form data is submitted by users
+2. **Data Processing**: The system preprocesses and normalizes the form data
+3. **Progress Analysis**: Recent sleep trends are analyzed (typically 7-14 days)
+4. **Pattern Identification**: Sleep patterns and consistency are evaluated
+5. **Message Selection**: An appropriate recommendation is selected based on:
+   - Current sleep trend (improving, regressing, stable)
+   - Presence of no-sleep nights (severe insomnia detection)
+   - User's tracking consistency
+   - Previously sent messages (to avoid repetition)
+6. **Personalization**: The message is personalized with the user's specific metrics
+7. **Delivery**: Recommendations are delivered through the user interface
+
+## Sample Recommendations
+
+Different messages are provided based on the user's current status:
+
+**For Improving Sleep:**
+> "Fantastic progress! Your self-reported sleep quality has improved to 7/10. Whatever you're doing is working - keep it up!"
+
+**For Regressing Sleep:**
+> "We all have ups and downs with sleep. Your recent ratings show a temporary dip, but remember you've achieved better sleep before! Consider returning to the habits that worked well previously."
+
+**For Sleepless Nights:**
+> "You've reported 3 nights without sleep recently. This is a significant pattern that deserves professional attention - please consider consulting with a healthcare provider specializing in sleep."
+
+## Integration with n8n
+
+The recommendation system integrates with n8n workflows to:
+1. Process incoming sleep form submissions
+2. Store the data in a centralized repository
+3. Generate recommendations
+4. Deliver recommendations through preferred channels
+
+## Configuration
+
+The recommendation system can be configured through:
+- `config/recommendations_config.yaml`: General settings for analysis and delivery
+- `config/message_templates.json`: The library of recommendation messages
+
+## Using the Recommendation API
+
+To generate recommendations programmatically:
+
+```python
+from src.models.recommendation_engine import SleepRecommendationEngine
+
+# Initialize the engine
+recommendation_engine = SleepRecommendationEngine()
+
+# Analyze a user's progress
+progress_data = recommendation_engine.analyze_progress(user_id, sleep_data)
+
+# Generate a personalized recommendation
+message = recommendation_engine.generate_recommendation(user_id, progress_data)
+
+```
+
 ## Directory Structure
 
 ```

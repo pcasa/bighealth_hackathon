@@ -2,7 +2,7 @@
 
 # User profile settings
 user_profiles:
-  count: 100
+  count: 500
   age_range: [18, 85]
   genders: ['male', 'female', 'non-binary']
   sleep_patterns:
@@ -21,8 +21,8 @@ user_profiles:
 time_settings:
   start_date: '2024-01-01'
   end_date: '2024-04-25'
-  missing_data_probability: 0.15
-  weekend_missing_probability: 0.25
+  missing_data_probability: 0.10
+  weekend_missing_probability: 0.20
 
 # Sleep pattern parameters
 sleep_patterns:

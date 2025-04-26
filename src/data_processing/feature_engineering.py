@@ -4,15 +4,36 @@ from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 class FeatureEngineering:
-    def __init__(self):
+    def __init__(self, config=None):
         """Initialize the feature engineering class"""
-        self.scaler = StandardScaler()
+        self.config = config or {}
+        
+        # Set defaults for missing config values
+        self.config.setdefault('scaling_method', 'standard')
+        self.config.setdefault('include_time_features', True)
+        self.config.setdefault('include_wearable_features', True)
+        self.config.setdefault('include_external_features', True)
+        self.config.setdefault('categorical_encoding', 'one-hot')
+        self.config.setdefault('handle_outliers', True)
+        
+        # Initialize scalers based on config
+        if self.config['scaling_method'] == 'standard':
+            self.scaler = StandardScaler()
+        elif self.config['scaling_method'] == 'minmax':
+            self.scaler = MinMaxScaler()
+        else:
+            self.scaler = StandardScaler()  # Default to standard
+            
         self.categorical_encoders = {}
         self.feature_columns = []
     
-    def create_features(self, data, include_wearable=True, include_external=True):
+    def create_features(self, data, include_wearable=None, include_external=None):
         """Create features for model training"""
         feature_data = data.copy()
+        
+        # Override defaults with provided parameters if given
+        include_wearable = include_wearable if include_wearable is not None else self.config['include_wearable_features']
+        include_external = include_external if include_external is not None else self.config['include_external_features']
         
         # Basic sleep features
         basic_features = [
@@ -27,11 +48,14 @@ class FeatureEngineering:
         ]
         
         # Time features
-        feature_data = self._add_time_features(feature_data)
-        time_features = [
-            'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
-            'day_of_week_sin', 'day_of_week_cos', 'is_weekend'
-        ]
+        if self.config['include_time_features']:
+            feature_data = self._add_time_features(feature_data)
+            time_features = [
+                'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
+                'day_of_week_sin', 'day_of_week_cos', 'is_weekend'
+            ]
+        else:
+            time_features = []
         
         # Wearable features
         wearable_features = []
@@ -77,20 +101,54 @@ class FeatureEngineering:
         feature_data = self._scale_features(feature_data, feature_columns)
         
         # Add categorical features
-        if 'sleep_pattern' in feature_data.columns:
-            feature_data = self._encode_categorical(feature_data, 'sleep_pattern')
-            cat_cols = [col for col in feature_data.columns if col.startswith('sleep_pattern_')]
-            feature_columns.extend(cat_cols)
-        
-        if 'device_type' in feature_data.columns:
-            feature_data = self._encode_categorical(feature_data, 'device_type')
-            cat_cols = [col for col in feature_data.columns if col.startswith('device_type_')]
-            feature_columns.extend(cat_cols)
+        categorical_method = self.config['categorical_encoding']
+        if categorical_method == 'one-hot':
+            if 'sleep_pattern' in feature_data.columns:
+                feature_data = self._encode_categorical(feature_data, 'sleep_pattern')
+                cat_cols = [col for col in feature_data.columns if col.startswith('sleep_pattern_')]
+                feature_columns.extend(cat_cols)
+            
+            if 'device_type' in feature_data.columns:
+                feature_data = self._encode_categorical(feature_data, 'device_type')
+                cat_cols = [col for col in feature_data.columns if col.startswith('device_type_')]
+                feature_columns.extend(cat_cols)
         
         # Store feature columns for later use
         self.feature_columns = feature_columns
         
-        return feature_data
+        # Separate targets from features
+        
+        targets_df = pd.DataFrame()
+    
+        # Check if we have the necessary columns for targets
+        required_columns = ['sleep_efficiency']
+        id_columns = []
+        
+        # Check which ID columns are available
+        if 'user_id' in feature_data.columns:
+            id_columns.append('user_id')
+        
+        if 'date' in feature_data.columns:
+            id_columns.append('date')
+        
+        # Create targets if we have the necessary data
+        if 'sleep_efficiency' in feature_data.columns:
+            # Initialize targets with available ID columns
+            targets_dict = {}
+            for col in id_columns:
+                targets_dict[col] = feature_data[col]
+            
+            # Add target value
+            targets_dict['sleep_quality'] = feature_data['sleep_efficiency']
+            
+            # Create targets dataframe
+            targets_df = pd.DataFrame(targets_dict)
+            
+            # Remove target columns from features
+            feature_data = feature_data.drop(['sleep_efficiency'], axis=1, errors='ignore')
+            
+        
+        return feature_data, targets_df
     
     def _add_time_features(self, data):
         """Add cyclical time features"""
@@ -117,9 +175,21 @@ class FeatureEngineering:
         """Scale numerical features"""
         numerical_features = [col for col in feature_columns if col in data.columns]
         
-        if numerical_features:
+        if numerical_features and len(data) > 0:
             # Save original values
             data_orig = data.copy()
+            
+            # Handle outliers if configured
+            if self.config.get('handle_outliers', True):
+                for col in numerical_features:
+                    if col in data.columns:
+                        # Simple outlier capping at 3 standard deviations
+                        mean = data[col].mean()
+                        std = data[col].std()
+                        if not pd.isna(std) and std > 0:
+                            lower_bound = mean - 3 * std
+                            upper_bound = mean + 3 * std
+                            data[col] = data[col].clip(lower_bound, upper_bound)
             
             # Fit scaler on data
             self.scaler.fit(data[numerical_features])
@@ -156,8 +226,9 @@ class FeatureEngineering:
         """Transform new data using the same transformations as training data"""
         transformed_data = new_data.copy()
         
-        # Add time features
-        transformed_data = self._add_time_features(transformed_data)
+        # Add time features if configured
+        if self.config['include_time_features']:
+            transformed_data = self._add_time_features(transformed_data)
         
         # Scale numerical features using fitted scaler
         numerical_features = [col for col in self.feature_columns 
