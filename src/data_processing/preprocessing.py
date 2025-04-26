@@ -190,6 +190,14 @@ class Preprocessor:
             logger.info(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
         
         self.processed_data = processed_data
+        
+        # Check for essential columns before returning
+        essential_columns = ['user_id', 'date', 'sleep_efficiency']
+        missing_columns = [col for col in essential_columns if col not in processed_data.columns]
+        
+        if missing_columns:
+            print(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
+        
         return processed_data
     
     def _add_sleep_features(self, data):
