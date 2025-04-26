@@ -2,8 +2,17 @@
 
 A comprehensive sleep analysis application to help people with insomnia and sleep disorders. This application collects sleep data from multiple sources, analyzes patterns, generates personalized recommendations, and provides insights into sleep quality.
 
-# Pytorch
-This needs to be installed seperately!
+## Project based on UV
+
+Combines pip, pip-tools, pipx, poetry, pyenv, twine, virtualenv, and more.
+See more at https://docs.astral.sh/uv/
+```
+pip install uv
+```
+
+## Pytorch
+
+**This needs to be installed seperately!**
 
 ```
 uv pip install torch
