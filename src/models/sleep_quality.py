@@ -456,6 +456,103 @@ class SleepQualityModel:
         
         return int(round(final_score))
     
+    # Add this method to the SleepQualityModel class in sleep_quality.py
+
+    def predict_with_confidence(self, data, sequence_length=7):
+        """Make predictions with the trained model and include confidence scores"""
+        if self.model is None:
+            raise ValueError("Model not trained or loaded")
+        
+        # Preprocess data
+        X, _, user_ids, dates, _ = self.preprocess_data(data, sequence_length)
+        
+        # Move to device
+        X = X.to(self.device)
+        
+        # Set model to evaluation mode
+        self.model.eval()
+        
+        # Make predictions
+        with torch.no_grad():
+            predictions = self.model(X).cpu().numpy().flatten()
+        
+        # Calculate confidence scores
+        confidences = []
+        for i, (user_id, date) in enumerate(zip(user_ids, dates)):
+            # Extract user-specific data
+            user_data = data[data['user_id'] == user_id]
+            
+            # Base confidence level
+            confidence = 0.7  # Start with a moderate confidence
+            
+            # Adjust based on data quantity
+            data_quantity = len(user_data)
+            if data_quantity >= 30:
+                confidence += 0.1
+            elif data_quantity < 10:
+                confidence -= 0.1
+            
+            # Adjust based on data consistency
+            user_data_sorted = user_data.sort_values('date')
+            expected_dates = pd.date_range(start=user_data_sorted['date'].min(), end=user_data_sorted['date'].max())
+            coverage_ratio = len(user_data) / len(expected_dates)
+            
+            if coverage_ratio >= 0.9:
+                confidence += 0.05
+            elif coverage_ratio < 0.7:
+                confidence -= 0.05
+            
+            # Adjust based on prediction value (extreme values are less confident)
+            prediction = predictions[i]
+            if prediction < 0.3 or prediction > 0.95:
+                confidence -= 0.05  # Less confident about extreme values
+            
+            # Ensure valid range [0.3, 0.95]
+            confidence = max(0.3, min(0.95, confidence))
+            confidences.append(round(confidence, 2))
+        
+        # Create results dataframe with confidence scores
+        results = pd.DataFrame({
+            'user_id': user_ids,
+            'date': dates,
+            'predicted_sleep_efficiency': predictions,
+            'prediction_confidence': confidences
+        })
+        
+        return results
+
+    def calculate_sleep_score_with_confidence(self, sleep_efficiency, subjective_rating=None, additional_metrics=None):
+        """Calculate an overall sleep score with confidence based on sleep efficiency and other metrics"""
+        # Calculate the sleep score
+        score = self.calculate_sleep_score(sleep_efficiency, subjective_rating, additional_metrics)
+        
+        # Base confidence
+        confidence = 0.80  # Start with 80% confidence
+        
+        # Adjust based on input data completeness
+        if subjective_rating is None:
+            confidence -= 0.10  # Lower confidence without subjective input
+        
+        if additional_metrics:
+            # Add confidence for each additional metric
+            confidence += 0.02 * min(5, len(additional_metrics))  # Cap at +0.10
+            
+            # Specific metrics that increase confidence
+            if 'deep_sleep_percentage' in additional_metrics and 'rem_sleep_percentage' in additional_metrics:
+                confidence += 0.05  # Better sleep stage data improves confidence
+        
+        # Adjust for extreme scores
+        if score < 20 or score > 90:
+            confidence -= 0.05  # Less confident about extreme scores
+        
+        # Ensure valid range [0.4, 0.95]
+        confidence = max(0.4, min(0.95, confidence))
+        
+        return {
+            'score': score,
+            'confidence': round(confidence, 2)
+        }
+
     def save(self, filepath):
         """Save the trained model and metadata"""
         if self.model is None:

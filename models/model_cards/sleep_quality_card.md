@@ -1,7 +1,7 @@
 # sleep_quality Model Card
 
 **Version:** 1.0.0
-**Created:** 2025-04-26 16:29:29
+**Created:** 2025-04-27 17:22:52
 
 ## Description
 Model for sleep_quality
@@ -21,8 +21,8 @@ Model for sleep_quality
 **Output:** Sleep Quality Score
 
 ## Performance Metrics
-- **final_train_loss:** 0.2007064386197738
-- **final_val_loss:** 0.4819433093070984
+- **final_train_loss:** 0.2059290714403001
+- **final_val_loss:** 0.46653300523757935
 - **features_used:** ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate']
 
 ## Limitations

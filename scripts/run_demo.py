@@ -13,6 +13,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.data_processing.preprocessing import Preprocessor
 from src.models.recommendation_engine import SleepRecommendationEngine
+from src.models.sleep_quality import SleepQualityModel
+# Import the new SleepScoreAnalytics class
+from src.models.sleep_score_analytics import SleepScoreAnalytics
 
 def create_demo_users():
     """Create sample users for the demo"""
@@ -24,7 +27,9 @@ def create_demo_users():
             'gender': 'female',
             'sleep_pattern': 'normal',
             'data_consistency': 0.95,
-            'sleep_consistency': 0.9
+            'sleep_consistency': 0.9,
+            'profession': 'Software Engineer',
+            'region': 'Seattle, Washington, United States'
         },
         {
             'user_id': 'user_insomnia',
@@ -32,7 +37,9 @@ def create_demo_users():
             'gender': 'male',
             'sleep_pattern': 'insomnia',
             'data_consistency': 0.85,
-            'sleep_consistency': 0.6
+            'sleep_consistency': 0.6,
+            'profession': 'Doctor',
+            'region': 'Boston, Massachusetts, United States'
         },
         {
             'user_id': 'user_shift_worker',
@@ -40,7 +47,9 @@ def create_demo_users():
             'gender': 'non-binary',
             'sleep_pattern': 'shift_worker',
             'data_consistency': 0.8,
-            'sleep_consistency': 0.5
+            'sleep_consistency': 0.5,
+            'profession': 'Nurse',
+            'region': 'Chicago, Illinois, United States'
         },
         {
             'user_id': 'user_improving',
@@ -48,7 +57,9 @@ def create_demo_users():
             'gender': 'female',
             'sleep_pattern': 'insomnia',  # Starts with insomnia but will improve
             'data_consistency': 0.9,
-            'sleep_consistency': 0.7
+            'sleep_consistency': 0.7,
+            'profession': 'Teacher',
+            'region': 'London, England, United Kingdom'
         },
         {
             'user_id': 'user_no_sleep',
@@ -56,7 +67,29 @@ def create_demo_users():
             'gender': 'male',
             'sleep_pattern': 'severe_insomnia',
             'data_consistency': 0.95,
-            'sleep_consistency': 0.3
+            'sleep_consistency': 0.3,
+            'profession': 'Lawyer',
+            'region': 'Tokyo, Tokyo, Japan'
+        },
+        {
+            'user_id': 'user_senior',
+            'age': 67,
+            'gender': 'female',
+            'sleep_pattern': 'normal',
+            'data_consistency': 0.98,
+            'sleep_consistency': 0.85,
+            'profession': 'Retired Teacher',
+            'region': 'Paris, Ile-de-France, France'
+        },
+        {
+            'user_id': 'user_young',
+            'age': 24,
+            'gender': 'male',
+            'sleep_pattern': 'variable',
+            'data_consistency': 0.75,
+            'sleep_consistency': 0.5,
+            'profession': 'Bartender',
+            'region': 'Sydney, New South Wales, Australia'
         }
     ]
     
@@ -244,6 +277,9 @@ def generate_form_submissions(users_df, days=30):
             sleep_record['sleep_duration_hours'] = sleep_duration_hours
             sleep_record['sleep_efficiency'] = sleep_efficiency
             
+            # Add flag for weekend
+            sleep_record['is_weekend'] = current_date.weekday() >= 5
+            
             user_sleep_data.append(sleep_record)
         
         all_sleep_data.extend(user_sleep_data)
@@ -346,6 +382,69 @@ def visualize_user_progress(user_id, sleep_data, recommendations):
     fig.savefig(f'demo/visualizations/{user_id}_progress.png')
     plt.close(fig)
 
+def run_sleep_score_analytics(users_df, form_data_df):
+    """Run the new SleepScoreAnalytics on the demo data"""
+    print("\nRunning Sleep Score Analytics...")
+    
+    # Create output directories
+    os.makedirs('demo/analytics', exist_ok=True)
+    os.makedirs('demo/analytics/visualizations', exist_ok=True)
+    
+    try:
+        # Initialize the analytics module
+        analytics = SleepScoreAnalytics()
+        
+        # Preprocess the data
+        preprocessor = Preprocessor()
+        processed_data = preprocessor.preprocess_sleep_data(form_data_df)
+        
+        # Merge with user data
+        merged_data = pd.merge(processed_data, users_df, on='user_id')
+        
+        # Calculate sleep scores
+        scored_data = analytics.calculate_sleep_scores(merged_data)
+        
+        # Add required dimension columns
+        # Add age range column
+        scored_data['age_range'] = scored_data['age'].apply(analytics._get_age_range)
+        
+        # Add season column if missing
+        if 'season' not in scored_data.columns:
+            scored_data['month'] = pd.to_datetime(scored_data['date']).dt.month
+            scored_data['season'] = scored_data['month'].apply(analytics._get_season)
+        
+        # Categorize professions if not already done
+        if 'profession_category' not in scored_data.columns:
+            scored_data['profession_category'] = scored_data['profession'].apply(analytics._categorize_profession)
+        
+        # Categorize regions if not already done
+        if 'region_category' not in scored_data.columns:
+            scored_data['region_category'] = scored_data['region'].apply(analytics._categorize_region)
+        
+        # Set full dataset for cross-dimensional analysis
+        analytics.set_full_dataset(scored_data)
+        
+        # Analyze across all dimensions
+        results = analytics.analyze_all_dimensions(scored_data)
+        
+        # Create visualizations
+        analytics.create_visualizations(results, 'demo/analytics/visualizations')
+        
+        # Generate summary report
+        analytics.generate_summary_report(results, 'demo/analytics/summary_report.md')
+        
+        print("  Sleep Score Analytics completed successfully!")
+        print("  Results saved to demo/analytics/")
+        
+        # Return the scored data for potential further use
+        return scored_data
+    
+    except Exception as e:
+        print(f"  Error running Sleep Score Analytics: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def run_demo():
     """Run the complete demo pipeline"""
     print("Starting Sleep Insights App Demo...")
@@ -388,18 +487,27 @@ def run_demo():
             # Analyze progress
             progress_data = recommendation_engine.analyze_progress(user_id, user_data)
             
-            # Generate recommendation
-            message = recommendation_engine.generate_recommendation(user_id, progress_data)
+            # Get user information for enhanced recommendations
+            user_info = users_df[users_df['user_id'] == user_id].iloc[0]
+            profession = user_info['profession']
+            region = user_info['region']
+            
+            # Generate recommendation with profession and region context
+            recommendation_result = recommendation_engine.generate_recommendation(
+                user_id, progress_data, profession, region
+            )
             
             # Store recommendation
             recommendation = {
                 'user_id': user_id,
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'message': message
+                'message': recommendation_result['message'],
+                'confidence': recommendation_result.get('confidence', 0.5),
+                'category': recommendation_result.get('category', 'unknown')
             }
             all_recommendations.append(recommendation)
             
-            print(f"  Recommendation: {message[:50]}...")
+            print(f"  Recommendation: {recommendation['message'][:50]}...")
             
         except Exception as e:
             print(f"  Error processing user {user_id}: {str(e)}")
@@ -417,12 +525,16 @@ def run_demo():
         except Exception as e:
             print(f"  Error creating visualization for {user_id}: {str(e)}")
     
+    # Run the SleepScoreAnalytics on our demo data
+    scored_data = run_sleep_score_analytics(users_df, form_data_df)
+    
     print("\nDemo completed successfully!")
     print("Results saved to the 'demo' directory:")
     print("  - User data: demo/data/demo_users.csv")
     print("  - Form data: demo/data/demo_form_data.csv")
     print("  - Recommendations: demo/recommendations/demo_recommendations.csv")
     print("  - Visualizations: demo/visualizations/")
+    print("  - Analytics: demo/analytics/")
 
 if __name__ == "__main__":
     run_demo()

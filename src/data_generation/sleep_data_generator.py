@@ -4,6 +4,7 @@ import yaml
 import os
 import json
 from datetime import datetime, timedelta, time
+from src.utils.constants import profession_categories
 
 class SleepDataGenerator:
     def __init__(self, config_path='config/data_generation_config.yaml'):
@@ -21,15 +22,6 @@ class SleepDataGenerator:
             end_date = datetime.strptime(self.time_settings['end_date'], '%Y-%m-%d')
         
         all_sleep_data = []
-        
-        # Extract profession categories for special handling
-        # (In a real implementation, we would parse these from profession strings)
-        profession_categories = {
-            'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare'],
-            'service': ['Server', 'Bartender', 'Retail', 'Hospitality'],
-            'tech': ['Software', 'Engineer', 'Developer', 'IT'],
-            'transit': ['Driver', 'Pilot', 'Operator', 'Transit']
-        }
         
         for _, user in users_df.iterrows():
             # Determine profession category for this user
@@ -97,72 +89,74 @@ class SleepDataGenerator:
                 modifiers = pattern_params['region_modifiers'][region_category]
                 for key, value in modifiers.items():
                     pattern_params[key] = value
-            # Set base bedtime and wake time based on pattern, profession, and region
-            if pattern == 'shift_worker':
-                # Adjust shift work schedule based on profession
-                if profession_category == 'healthcare':
-                    # More likely to be night shifts
-                    day_sleep_prob = 0.8
-                elif profession_category == 'service':
-                    # More variable shifts
-                    day_sleep_prob = 0.5
-                else:
-                    # Use default from pattern params
-                    day_sleep_prob = pattern_params.get('day_sleep_probability', 0.7)
-                    
-                if np.random.random() > day_sleep_prob:
-                    # Night worker - sleeps during day
-                    base_bedtime = time(hour=8, minute=0)  # 8:00 AM
-                    base_waketime = time(hour=15, minute=0)  # 3:00 PM
-                else:
-                    # Day worker - sleeps at night
-                    base_bedtime = time(hour=22, minute=0)  # 10:00 PM
-                    base_waketime = time(hour=5, minute=0)  # 5:00 AM
+        
+        # Set base bedtime and wake time based on pattern, profession, and region
+        if pattern == 'shift_worker':
+            # Adjust shift work schedule based on profession
+            if profession_category == 'healthcare':
+                # More likely to be night shifts
+                day_sleep_prob = 0.8
+            elif profession_category == 'service':
+                # More variable shifts
+                day_sleep_prob = 0.5
             else:
-                # Adjust based on region
-                if region_category == 'europe':
-                    # European countries tend to have later bedtimes
-                    base_bedtime = time(hour=23, minute=30)  # 11:30 PM
-                    base_waketime = time(hour=7, minute=30)  # 7:30 AM
-                elif region_category == 'asia':
-                    # Some Asian countries have earlier bedtimes
-                    base_bedtime = time(hour=22, minute=0)  # 10:00 PM
-                    base_waketime = time(hour=6, minute=0)  # 6:00 AM
-                else:
-                    # Default North American times
-                    base_bedtime = time(hour=22, minute=30)  # 10:30 PM
-                    base_waketime = time(hour=6, minute=30)  # 6:30 AM
+                # Use default from pattern params
+                day_sleep_prob = pattern_params.get('day_sleep_probability', 0.7)
+                
+            if np.random.random() > day_sleep_prob:
+                # Night worker - sleeps during day
+                base_bedtime = time(hour=8, minute=0)  # 8:00 AM
+                base_waketime = time(hour=15, minute=0)  # 3:00 PM
+            else:
+                # Day worker - sleeps at night
+                base_bedtime = time(hour=22, minute=0)  # 10:00 PM
+                base_waketime = time(hour=5, minute=0)  # 5:00 AM
+        else:
+            # Adjust based on region
+            if region_category == 'europe':
+                # European countries tend to have later bedtimes
+                base_bedtime = time(hour=23, minute=30)  # 11:30 PM
+                base_waketime = time(hour=7, minute=30)  # 7:30 AM
+            elif region_category == 'asia':
+                # Some Asian countries have earlier bedtimes
+                base_bedtime = time(hour=22, minute=0)  # 10:00 PM
+                base_waketime = time(hour=6, minute=0)  # 6:00 AM
+            else:
+                # Default North American times
+                base_bedtime = time(hour=22, minute=30)  # 10:30 PM
+                base_waketime = time(hour=6, minute=30)  # 6:30 AM
+        
+        # Generate sleep data for each day
+        current_date = start_date
+        while current_date <= end_date:
+            # Check if the user skipped logging this day
+            missing_prob = self.time_settings['missing_data_probability']
             
-            current_date = start_date
-            while current_date <= end_date:
-                # Check if the user skipped logging this day
-                missing_prob = self.time_settings['missing_data_probability']
+            # Adjust missing data probability based on profession
+            if profession_category and 'profession_missing_data' in self.time_settings:
+                if profession_category in self.time_settings['profession_missing_data']:
+                    missing_prob = self.time_settings['profession_missing_data'][profession_category]
+            
+            # Weekend adjustment
+            if current_date.weekday() >= 5:  # Weekend
+                missing_prob = self.time_settings['weekend_missing_probability']
                 
-                # Adjust missing data probability based on profession
-                if profession_category and 'profession_missing_data' in self.time_settings:
-                    if profession_category in self.time_settings['profession_missing_data']:
-                        missing_prob = self.time_settings['profession_missing_data'][profession_category]
-                
-                # Weekend adjustment
-                if current_date.weekday() >= 5:  # Weekend
-                    missing_prob = self.time_settings['weekend_missing_probability']
-                    
-                # Skip if user's consistency level says they miss this day
-                if np.random.random() > user['data_consistency'] or np.random.random() < missing_prob:
-                    current_date += timedelta(days=1)
-                    continue
-                
-                # Generate sleep data for this day with profession and region context
-                sleep_data = self._generate_daily_sleep(
-                    user, current_date, pattern, pattern_params, 
-                    base_bedtime, base_waketime,
-                    profession_category, region_category
-                )
-                user_data.append(sleep_data)
-                
+            # Skip if user's consistency level says they miss this day
+            if np.random.random() > user['data_consistency'] or np.random.random() < missing_prob:
                 current_date += timedelta(days=1)
+                continue
             
-            return user_data
+            # Generate sleep data for this day with profession and region context
+            sleep_data = self._generate_daily_sleep(
+                user, current_date, pattern, pattern_params, 
+                base_bedtime, base_waketime,
+                profession_category, region_category
+            )
+            user_data.append(sleep_data)
+            
+            current_date += timedelta(days=1)
+        
+        return user_data
     
     def _generate_daily_sleep(self, user, date, pattern, pattern_params, base_bedtime, base_waketime, 
                              profession_category=None, region_category=None):

@@ -6,6 +6,7 @@ import random
 from datetime import datetime, timedelta
 import json
 import os
+from src.utils.constants import profession_categories
 
 class SleepRecommendationEngine:
     def __init__(self, config_path='config/recommendations_config.yaml'):
@@ -238,7 +239,7 @@ class SleepRecommendationEngine:
             eligible_templates = self.message_templates.get(category, [])
             
         if not eligible_templates:
-            return "Keep tracking your sleep for personalized recommendations!"
+            return {"message": "Keep tracking your sleep for personalized recommendations!", "confidence": 0.3}
         
         # Select a random template from eligible ones
         template = random.choice(eligible_templates)
@@ -261,7 +262,14 @@ class SleepRecommendationEngine:
         # Update user history
         self._update_user_history(user_id, category, template)
         
-        return message
+        # Calculate confidence for this recommendation
+        confidence = self.calculate_recommendation_confidence(user_id, progress_data)
+        
+        return {
+            "message": message,
+            "confidence": confidence,
+            "category": category
+        }
 
     def _get_eligible_templates(self, category, user_history, recency=7):
         """Get templates that haven't been used recently"""
@@ -411,14 +419,6 @@ class SleepRecommendationEngine:
         return ""
     
     def _extract_profession_category(self, profession):
-        """Extract profession category from profession string"""
-        profession_categories = {
-            'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-            'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-            'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
-            'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-            'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
-        }
         
         for category, keywords in profession_categories.items():
             if any(keyword.lower() in profession.lower() for keyword in keywords):
@@ -447,6 +447,55 @@ class SleepRecommendationEngine:
         else:
             return "other"
     
+    def calculate_recommendation_confidence(self, user_id, progress_data, user_sleep_data=None):
+        """Calculate confidence level for recommendations based on data quality and user factors"""
+        # Start with a base confidence
+        confidence = 0.6  # Base confidence level (60%)
+        
+        # Factor 1: Amount of data (more data = higher confidence)
+        if user_sleep_data is not None:
+            data_points = len(user_sleep_data)
+        else:
+            # Get an estimate from the user history
+            user_history = self.user_message_history.get(user_id, [])
+            data_points = len(user_history) * 2  # Rough estimate
+        
+        if data_points >= 30:
+            confidence += 0.15  # High confidence for 30+ days of data
+        elif data_points >= 14:
+            confidence += 0.1   # Medium confidence for 14-29 days
+        elif data_points < 7:
+            confidence -= 0.2   # Low confidence for less than 7 days
+        
+        # Factor 2: Data consistency (how regularly user logs data)
+        if 'consistency' in progress_data:
+            tracking_consistency = progress_data['consistency']
+            # Scale from -0.1 (very inconsistent) to +0.1 (very consistent)
+            consistency_factor = (tracking_consistency - 0.5) * 0.2
+            confidence += consistency_factor
+        
+        # Factor 3: Sleep pattern (some patterns are more predictable than others)
+        if 'trend' in progress_data:
+            if progress_data['trend'] in ['severe_insomnia', 'moderate_insomnia']:
+                confidence -= 0.15  # Insomnia patterns are less predictable
+            elif progress_data['trend'] in ['strong_improvement', 'improvement']:
+                confidence += 0.05  # Clear improvement trends are more reliable
+            elif progress_data['trend'] == 'stable':
+                confidence += 0.1   # Stable patterns are most predictable
+        
+        # Factor 4: Key metrics completeness
+        if 'key_metrics' in progress_data:
+            metrics = progress_data['key_metrics']
+            expected_metrics = ['avg_efficiency', 'recent_efficiency', 'avg_awakenings']
+            missing_metrics = sum(1 for m in expected_metrics if m not in metrics or metrics[m] is None)
+            confidence -= missing_metrics * 0.05  # Reduce confidence for each missing key metric
+        
+        # Ensure confidence is within valid range [0.2, 0.95]
+        confidence = max(0.2, min(0.95, confidence))
+        
+        # Round to 2 decimal places
+        return round(confidence, 2)
+
     def save_history(self, filepath):
         """Save message history to file"""
         with open(filepath, 'w') as f:

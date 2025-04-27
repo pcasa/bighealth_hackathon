@@ -18,6 +18,7 @@ from data_processing.preprocessing import Preprocessor
 
 # Import our new user profile routes
 from api.user_profile_routes import router as user_router
+from src.utils.constants import profession_categories
 
 # Initialize application
 app = FastAPI(
@@ -47,6 +48,42 @@ except Exception as e:
     print(f"Warning: Could not load sleep quality model: {str(e)}")
 
 # Data models
+class ConfidenceScore(BaseModel):
+    value: Optional[float] = None
+    confidence: float
+
+class SleepEntryResponse(BaseModel):
+    status: str
+    message: str
+    entry_date: str
+    sleep_score: ConfidenceScore
+    trend: str
+    consistency: float
+    key_metrics: Dict
+    profession_impact: Dict
+    region_impact: Dict
+    recommendation: str
+    predictions: Dict[str, ConfidenceScore]
+
+class AnalysisResultWithConfidence(BaseModel):
+    trend: str
+    consistency: float
+    improvement_rate: float
+    key_metrics: Dict[str, ConfidenceScore]
+    recommendations: ConfidenceScore
+    profession_impact: Dict
+    region_impact: Dict
+    overall_confidence: float
+
+class RecommendationWithConfidence(BaseModel):
+    user_id: str
+    recommendation: ConfidenceScore
+    timestamp: str
+    profession_impact: Dict
+    region_impact: Dict
+    overall_confidence: float
+    data_points_used: int
+    
 class SleepEntry(BaseModel):
     user_id: str
     date: str
@@ -241,21 +278,29 @@ async def log_sleep(entry: EnhancedSleepEntry):
         else:
             rec_df.to_csv(user_rec_file, index=False)
         
-        # 7. Make predictions about future sleep
+        # 7. Make predictions about future sleep with confidence scores
         # Calculate averages for recent data (last 7 days)
         recent_data = processed_data.tail(7)
         avg_efficiency = recent_data['sleep_efficiency'].mean() if 'sleep_efficiency' in recent_data else None
         efficiency_trend = progress_data.get('improvement_rate', 0)
-        
-        # Predict tomorrow's efficiency based on trend
+
+        # Get prediction confidence
+        prediction_confidence = calculate_prediction_confidence(processed_data, progress_data)
+
+        # Predict tomorrow's efficiency based on trend with confidence
         predicted_efficiency = None
         if avg_efficiency is not None:
             predicted_efficiency = min(1.0, max(0, avg_efficiency + efficiency_trend))
-        
+            
+        # Calculate score confidence for sleep_score
+        sleep_score_confidence = min(0.95, prediction_confidence + 0.1)  # Slightly higher confidence for current data
+
         # Predict optimal bedtime and wake time
         optimal_bedtime = None
         optimal_waketime = None
-        
+        bedtime_confidence = None
+        waketime_confidence = None
+
         if 'bedtime' in recent_data.columns and 'wake_time' in recent_data.columns:
             # Find the day with best sleep efficiency
             best_day_idx = recent_data['sleep_efficiency'].idxmax() if 'sleep_efficiency' in recent_data else None
@@ -276,15 +321,27 @@ async def log_sleep(entry: EnhancedSleepEntry):
                 # Extract just the time component
                 optimal_bedtime = best_bedtime.strftime('%H:%M')
                 optimal_waketime = best_waketime.strftime('%H:%M')
-        
-        # 8. Return comprehensive response with enhanced profession and region insights
+                
+                # Calculate confidence based on sleep consistency
+                if 'key_metrics' in progress_data and 'bedtime_consistency' in progress_data['key_metrics']:
+                    bedtime_consistency = progress_data['key_metrics']['bedtime_consistency']
+                    bedtime_confidence = min(0.9, bedtime_consistency + 0.2)  # Scale up slightly
+                    waketime_confidence = min(0.9, bedtime_consistency + 0.1)  # Usually less confident about wake time
+                else:
+                    bedtime_confidence = prediction_confidence - 0.05
+                    waketime_confidence = prediction_confidence - 0.1
+
+        # 8. Return comprehensive response with enhanced profession and region insights and confidence scores
         return {
             "status": "success",
             "message": "Sleep entry logged successfully",
             
             # Entry details
             "entry_date": entry.date,
-            "sleep_score": sleep_score,
+            "sleep_score": {
+                "value": sleep_score,
+                "confidence": sleep_score_confidence
+            },
             
             # Analysis
             "trend": progress_data.get('trend'),
@@ -298,18 +355,31 @@ async def log_sleep(entry: EnhancedSleepEntry):
             # Recommendation
             "recommendation": recommendation,
             
-            # Predictions
+            # Predictions with confidence scores
             "predictions": {
-                "estimated_next_efficiency": round(predicted_efficiency * 100) if predicted_efficiency else None,
-                "optimal_bedtime": optimal_bedtime,
-                "optimal_waketime": optimal_waketime,
-                "expected_improvement": "increasing" if efficiency_trend > 0.005 else 
-                                       "decreasing" if efficiency_trend < -0.005 else "stable"
+                "estimated_next_efficiency": {
+                    "value": round(predicted_efficiency * 100) if predicted_efficiency else None,
+                    "confidence": prediction_confidence
+                },
+                "optimal_bedtime": {
+                    "value": optimal_bedtime,
+                    "confidence": bedtime_confidence
+                },
+                "optimal_waketime": {
+                    "value": optimal_waketime,
+                    "confidence": waketime_confidence
+                },
+                "expected_improvement": {
+                    "value": "increasing" if efficiency_trend > 0.005 else 
+                            "decreasing" if efficiency_trend < -0.005 else "stable",
+                    "confidence": prediction_confidence - 0.05  # Slightly lower confidence for trend prediction
+                }
             }
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error logging sleep entry: {str(e)}")
+
 
 @app.get("/sleep/analysis/{user_id}")
 async def analyze_sleep(user_id: str, days: int = 30):
@@ -367,11 +437,49 @@ async def analyze_sleep(user_id: str, days: int = 30):
         profession_impact = analyze_profession_impact(profession, progress_data)
         region_impact = analyze_region_impact(region, progress_data)
         
-        # Add recommendation to result
-        result = progress_data.copy()
-        result['recommendations'] = recommendation
-        result['profession_impact'] = profession_impact
-        result['region_impact'] = region_impact
+        # Calculate prediction confidence based on data quality
+        prediction_confidence = calculate_prediction_confidence(processed_data, progress_data)
+        
+        # Add confidence scores to metrics
+        metrics_with_confidence = {}
+        if 'key_metrics' in progress_data:
+            for metric, value in progress_data['key_metrics'].items():
+                if value is not None:
+                    # Calculate different confidence scores for different metrics
+                    if metric in ['avg_efficiency', 'recent_efficiency', 'best_efficiency']:
+                        metric_confidence = min(0.95, prediction_confidence + 0.1)
+                    elif metric in ['avg_awakenings', 'avg_time_awake']:
+                        metric_confidence = prediction_confidence
+                    elif metric in ['consistent_bedtime']:
+                        metric_confidence = min(0.9, prediction_confidence + 0.05)
+                    else:
+                        metric_confidence = prediction_confidence - 0.05
+                    
+                    # Store value and confidence
+                    metrics_with_confidence[metric] = {
+                        "value": value,
+                        "confidence": round(metric_confidence, 2)
+                    }
+                else:
+                    metrics_with_confidence[metric] = {
+                        "value": None,
+                        "confidence": 0
+                    }
+        
+        # Add recommendation to result with confidence score
+        result = {
+            "trend": progress_data.get('trend'),
+            "consistency": progress_data.get('consistency'),
+            "improvement_rate": progress_data.get('improvement_rate'),
+            "key_metrics": metrics_with_confidence,
+            "recommendations": {
+                "text": recommendation,
+                "confidence": min(0.9, prediction_confidence + 0.05)  # Slightly higher confidence for recommendations
+            },
+            "profession_impact": profession_impact,
+            "region_impact": region_impact,
+            "overall_confidence": prediction_confidence
+        }
         
         return result
         
@@ -379,6 +487,7 @@ async def analyze_sleep(user_id: str, days: int = 30):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing sleep data: {str(e)}")
+
 
 @app.get("/sleep/recommendation/{user_id}")
 async def get_recommendation(user_id: str, days: int = 30):
@@ -432,6 +541,12 @@ async def get_recommendation(user_id: str, days: int = 30):
             region
         )
         
+        # Calculate prediction confidence
+        prediction_confidence = calculate_prediction_confidence(processed_data, progress_data)
+        
+        # Calculate recommendation confidence based on data quality
+        recommendation_confidence = min(0.9, prediction_confidence + 0.05)
+        
         # Store recommendation
         rec_dir = 'data/recommendations'
         os.makedirs(rec_dir, exist_ok=True)
@@ -440,7 +555,8 @@ async def get_recommendation(user_id: str, days: int = 30):
         rec_data = {
             'user_id': user_id,
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'message': recommendation
+            'message': recommendation,
+            'confidence': recommendation_confidence  # Store confidence with recommendation
         }
         
         # Append to existing file or create new one
@@ -452,23 +568,31 @@ async def get_recommendation(user_id: str, days: int = 30):
         else:
             rec_df.to_csv(user_rec_file, index=False)
         
-        # Analyze profession and region impact
+        # Analyze profession and region impact with confidence
         profession_impact = analyze_profession_impact(profession, progress_data)
+        profession_impact['confidence'] = min(0.85, prediction_confidence)  # Slightly lower confidence for impact analysis
+        
         region_impact = analyze_region_impact(region, progress_data)
+        region_impact['confidence'] = min(0.85, prediction_confidence)  # Slightly lower confidence for impact analysis
         
         return {
             "user_id": user_id,
-            "recommendation": recommendation,
+            "recommendation": {
+                "text": recommendation,
+                "confidence": recommendation_confidence
+            },
             "timestamp": rec_data['timestamp'],
             "profession_impact": profession_impact,
-            "region_impact": region_impact
+            "region_impact": region_impact,
+            "overall_confidence": prediction_confidence,
+            "data_points_used": len(processed_data)
         }
         
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating recommendation: {str(e)}")
-
+    
 # Helper functions
 def load_user_data():
     """Load user data from CSV file"""
@@ -487,14 +611,7 @@ def calculate_profession_impact(profession, sleep_entry):
     """Calculate how profession impacts sleep metrics"""
     # Extract profession category
     profession_category = "other"
-    profession_categories = {
-        'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-        'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-        'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
-        'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-        'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
-    }
-    
+
     for category, keywords in profession_categories.items():
         if any(keyword.lower() in profession.lower() for keyword in keywords):
             profession_category = category
@@ -595,13 +712,6 @@ def analyze_profession_impact(profession, progress_data):
     """Generate more detailed analysis of how profession impacts sleep patterns"""
     # Extract profession category
     profession_category = "other"
-    profession_categories = {
-        'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-        'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-        'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
-        'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-        'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
-    }
     
     for category, keywords in profession_categories.items():
         if any(keyword.lower() in profession.lower() for keyword in keywords):
@@ -774,13 +884,6 @@ def generate_enhanced_recommendation(user_id, progress_data, profession, region)
     
     # Extract profession category
     profession_category = "other"
-    profession_categories = {
-        'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-        'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-        'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
-        'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-        'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
-    }
     
     for category, keywords in profession_categories.items():
         if any(keyword.lower() in profession.lower() for keyword in keywords):
@@ -857,19 +960,58 @@ def _extract_region_category(region):
 
 def _extract_profession_category(profession):
     """Extract profession category from profession string"""
-    profession_categories = {
-        'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-        'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-        'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
-        'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-        'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
-    }
     
     for category, keywords in profession_categories.items():
         if any(keyword.lower() in profession.lower() for keyword in keywords):
             return category
             
     return "other"
+
+# Add a new helper function to calculate prediction confidence
+def calculate_prediction_confidence(user_data, progress_data):
+    """Calculate confidence level for predictions based on data quality"""
+    confidence = 0.5  # Base confidence level (50%)
+    
+    # Factor 1: Amount of data
+    data_points = len(user_data)
+    if data_points >= 30:
+        confidence += 0.2  # High confidence for 30+ days of data
+    elif data_points >= 14:
+        confidence += 0.1  # Medium confidence for 14-29 days
+    elif data_points < 7:
+        confidence -= 0.2  # Low confidence for less than 7 days
+        
+    # Factor 2: Data consistency (how regularly user logs data)
+    if 'consistency' in progress_data:
+        tracking_consistency = progress_data['consistency']
+        # Scale from -0.1 (very inconsistent) to +0.1 (very consistent)
+        consistency_factor = (tracking_consistency - 0.5) * 0.2
+        confidence += consistency_factor
+    
+    # Factor 3: Data variability (stable patterns are more predictable)
+    if 'key_metrics' in progress_data and 'bedtime_consistency' in progress_data['key_metrics']:
+        bedtime_consistency = progress_data['key_metrics']['bedtime_consistency']
+        if bedtime_consistency > 0.8:
+            confidence += 0.1  # High consistency leads to better predictions
+        elif bedtime_consistency < 0.4:
+            confidence -= 0.1  # Low consistency reduces prediction confidence
+    
+    # Factor 4: Recent changes/trends affect prediction confidence
+    if 'improvement_rate' in progress_data:
+        abs_rate = abs(progress_data['improvement_rate'])
+        if abs_rate > 0.02:  # Significant change recently
+            confidence -= 0.1  # Rapid changes reduce prediction confidence
+    
+    # Factor 5: Account for insomnia pattern which is harder to predict
+    if 'trend' in progress_data:
+        if progress_data['trend'] in ['severe_insomnia', 'moderate_insomnia']:
+            confidence -= 0.15  # Insomnia patterns are less predictable
+    
+    # Ensure confidence is within valid range [0.1, 0.95]
+    confidence = max(0.1, min(0.95, confidence))
+    
+    # Round to 2 decimal places
+    return round(confidence, 2)
 
 if __name__ == "__main__":
     import uvicorn

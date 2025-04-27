@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import pandas as pd
 import os
 from datetime import datetime
+from src.utils.constants import profession_categories
 
 router = APIRouter(
     prefix="/user",
@@ -226,15 +227,6 @@ async def get_profession_stats():
     
     if len(users_df) == 0 or len(sleep_df) == 0:
         return []
-    
-    # Extract profession categories
-    profession_categories = {
-        'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-        'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-        'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
-        'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-        'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
-    }
     
     # Categorize professions
     def categorize_profession(profession):

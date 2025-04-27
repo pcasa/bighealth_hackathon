@@ -13,6 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime, timedelta
+from src.utils.constants import profession_categories
 
 def parse_args():
     """Parse command line arguments."""
@@ -86,15 +87,6 @@ def analyze_by_profession(merged_data, output_dir):
     else:
         # Try to categorize professions
         merged_data['profession_category'] = 'other'
-        
-        # Map professions to categories
-        profession_categories = {
-            'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-            'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-            'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data', 'Computer'],
-            'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-            'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer', 'Supervisor']
-        }
         
         for category, keywords in profession_categories.items():
             mask = merged_data['profession'].apply(lambda x: any(keyword.lower() in x.lower() for keyword in keywords))
@@ -396,13 +388,7 @@ def visualize_profession_region_trends(merged_data, output_dir):
     if 'profession_category' not in merged_data.columns:
         # Categorize professions
         merged_data['profession_category'] = 'other'
-        profession_categories = {
-            'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-            'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-            'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
-            'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-            'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
-        }
+
         for category, keywords in profession_categories.items():
             mask = merged_data['profession'].apply(lambda x: any(keyword.lower() in x.lower() for keyword in keywords))
             merged_data.loc[mask, 'profession_category'] = category

@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime, timedelta
-import json
+from src.utils.constants import profession_categories
 
 def parse_args():
     """Parse command line arguments."""
@@ -294,13 +294,6 @@ def generate_personalized_recommendations(user_profile, sleep_metrics, recommend
     
     # Determine profession category
     profession_category = 'other'
-    profession_categories = {
-        'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
-        'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
-        'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data', 'Computer'],
-        'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
-        'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer', 'Supervisor']
-    }
     
     for category, keywords in profession_categories.items():
         if any(keyword.lower() in profession.lower() for keyword in keywords):
@@ -532,3 +525,4 @@ def create_user_report(user_profile, sleep_metrics, recommendations, visualizati
                 flex-wrap: wrap;
                 gap: 20px;
                 justify-content: space-between;
+            }}
