@@ -1,4 +1,4 @@
-# Data generation configuration
+# Updated data_generation_config.yaml with profession and region support
 
 # User profile settings
 user_profiles:
@@ -16,6 +16,20 @@ user_profiles:
     google_watch: 0.2
     fitbit: 0.3
     samsung_watch: 0.1
+  # New region-based configurations
+  region_distribution:
+    north_america: 0.4
+    europe: 0.3
+    asia: 0.2
+    other: 0.1
+  # Profession categories for more nuanced data generation
+  profession_categories:
+    healthcare: 0.15
+    tech: 0.2
+    service: 0.25
+    education: 0.1
+    industrial: 0.15
+    office: 0.15
 
 # Time settings
 time_settings:
@@ -23,6 +37,12 @@ time_settings:
   end_date: '2024-04-25'
   missing_data_probability: 0.10
   weekend_missing_probability: 0.20
+  # Different missing data probabilities by profession
+  profession_missing_data:
+    shift_worker: 0.15
+    healthcare: 0.12
+    service: 0.14
+    tech: 0.08
 
 # Sleep pattern parameters
 sleep_patterns:
@@ -49,6 +69,14 @@ sleep_patterns:
     awakening_duration_minutes: [5, 30]
     sleep_efficiency: [0.7, 0.85]
     subjective_rating_range: [4, 8]
+    # Add profession-specific modifiers
+    profession_modifiers:
+      healthcare:
+        sleep_efficiency: -0.05
+        awakenings_count: [3, 6]
+      transit:
+        sleep_efficiency: -0.03
+        day_sleep_probability: 0.7
   
   oversleeper:
     time_in_bed_hours: [9, 11]
@@ -63,6 +91,12 @@ sleep_patterns:
     sleep_duration_variance_hours: [1, 3]
     awakening_variance: [0, 5]
     subjective_rating_range: [3, 9]
+    # Regional patterns (some regions have more variance)
+    region_modifiers:
+      europe:
+        bedtime_variance_hours: [0.5, 2]
+      asia:
+        bedtime_variance_hours: [0.5, 1.5]
 
 # Wearable device parameters
 device_parameters:

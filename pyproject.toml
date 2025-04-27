@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "faker>=37.1.0",
     "fastapi>=0.104.0",
     "jupyter>=1.0.0",
     "matplotlib>=3.7.2",

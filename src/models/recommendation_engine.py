@@ -199,8 +199,8 @@ class SleepRecommendationEngine:
         bedtime_hours = sleep_data['bedtime'].dt.hour + sleep_data['bedtime'].dt.minute / 60
         return np.std(bedtime_hours) < 1.0  # Less than 1 hour standard deviation
     
-    def generate_recommendation(self, user_id, progress_data):
-        """Generate a personalized recommendation based on progress analysis"""
+    def generate_recommendation(self, user_id, progress_data, profession=None, region=None):
+        """Generate a personalized recommendation based on progress analysis with profession and region context"""
         trend = progress_data['trend']
         consistency = progress_data['consistency']
         key_metrics = progress_data['key_metrics']
@@ -246,11 +246,23 @@ class SleepRecommendationEngine:
         # Personalize the message
         message = self._personalize_message(template, key_metrics)
         
+        # Add profession-specific advice if available
+        if profession:
+            profession_advice = self._get_profession_advice(profession, trend)
+            if profession_advice:
+                message += f" {profession_advice}"
+        
+        # Add region-specific advice if available
+        if region:
+            region_advice = self._get_region_advice(region, trend)
+            if region_advice:
+                message += f" {region_advice}"
+        
         # Update user history
         self._update_user_history(user_id, category, template)
         
         return message
-    
+
     def _get_eligible_templates(self, category, user_history, recency=7):
         """Get templates that haven't been used recently"""
         all_templates = self.message_templates.get(category, [])
@@ -298,6 +310,142 @@ class SleepRecommendationEngine:
         # Trim history if needed
         if len(self.user_message_history[user_id]) > 30:
             self.user_message_history[user_id] = self.user_message_history[user_id][-30:]
+
+
+    def _get_profession_advice(self, profession, trend):
+        """Get profession-specific sleep advice"""
+        # Extract profession category from profession string
+        profession_category = self._extract_profession_category(profession)
+        
+        # Define profession-specific advice by category and trend
+        profession_advice = {
+            'healthcare': {
+                'strong_improvement': "Your profession often involves irregular schedules, so maintaining this progress is a significant achievement.",
+                'improvement': "As a healthcare professional, consider using blackout curtains to improve sleep during day sleep periods.",
+                'regression': "Healthcare work can be stressful. Consider a 10-minute mindfulness practice before bed to help transition to sleep.",
+                'stable': "Given the demands of healthcare work, maintaining stable sleep is an accomplishment. Continue your successful routines."
+            },
+            'tech': {
+                'strong_improvement': "You've made excellent progress despite the screen time common in tech roles. Keep limiting blue light before bed.",
+                'improvement': "For tech professionals, try using blue light filters on devices after 8pm to help maintain your sleep improvements.",
+                'regression': "Tech work often means significant screen time. Try disconnecting from devices at least 1 hour before bedtime.",
+                'stable': "For people in tech, balancing screen time with good sleep is key. Consider physical activity to offset sedentary work."
+            },
+            'service': {
+                'strong_improvement': "Service industry roles often have variable schedules. You've done well adapting your sleep routine despite this challenge.",
+                'improvement': "Your service role may involve irregular hours. Try to maintain a consistent wind-down routine regardless of when your shift ends.",
+                'regression': "Service work can involve stressful interactions. Try a 10-minute decompression ritual after work to mentally separate work stress from sleep time.",
+                'stable': "In service roles, maintaining consistent sleep despite variable schedules is commendable. Continue prioritizing your sleep routine."
+            },
+            'education': {
+                'strong_improvement': "You've improved despite the mental demands of educational work. Well done on creating boundaries for better sleep.",
+                'improvement': "As an educator, try to finish grading or preparation at least 2 hours before bedtime to give your mind time to wind down.",
+                'regression': "Educational work often comes home with you. Set clearer boundaries between work and sleep time to improve your rest.",
+                'stable': "You're maintaining good sleep while balancing the demands of education work. Remember to keep work materials out of your sleep space."
+            },
+            'office': {
+                'strong_improvement': "You've made great progress despite the sedentary nature of office work. Physical activity is clearly helping your sleep.",
+                'improvement': "Office work can be mentally draining but physically inactive. Consider adding moderate exercise to help deepen your sleep.",
+                'regression': "Screen exposure and mental stress from office work may be affecting your sleep. Create a clear transition between work and rest.",
+                'stable': "You've found a good balance with your office work schedule. Continue to maintain separation between work and sleep environments."
+            },
+            'other': {
+                'strong_improvement': "You've made excellent progress in your sleep quality. Your work-life balance seems to be improving.",
+                'improvement': "Consider how your work schedule affects your sleep timing and create consistent boundaries to protect your rest time.",
+                'regression': "Work-related factors might be impacting your sleep lately. Assess if you can create better transitions between work and rest.",
+                'stable': "You're maintaining consistent sleep patterns alongside your work schedule. Continue your successful sleep routines."
+            }
+        }
+        
+        # Return advice if available for this profession and trend
+        if profession_category in profession_advice and trend in profession_advice[profession_category]:
+            return profession_advice[profession_category][trend]
+        
+        # Default to 'other' category if specific advice not available
+        if 'other' in profession_advice and trend in profession_advice['other']:
+            return profession_advice['other'][trend]
+        
+        return ""
+
+    def _get_region_advice(self, region, trend):
+        """Get region-specific sleep advice"""
+        # Extract region category
+        region_category = self._extract_region_category(region)
+        
+        # Define region-specific advice
+        region_advice = {
+            'north_america': {
+                'strong_improvement': "Your sleep has improved well despite the common work-focused culture in your region.",
+                'improvement': "In North America, many struggle with work-life balance. Creating clear boundaries around work hours helps protect sleep time.",
+                'regression': "In your region, it's common to prioritize work over sleep. Try to resist this cultural pressure for better sleep quality.",
+                'stable': "In North American culture, maintaining good sleep boundaries can be challenging but important for long-term health."
+            },
+            'europe': {
+                'strong_improvement': "Your sleep has improved significantly. The later dinner times common in your region don't seem to be affecting you.",
+                'improvement': "In many European countries, later dinner times can impact sleep. Try to eat your evening meal at least 3 hours before bedtime.",
+                'regression': "The dining culture in your region may be affecting your sleep. Consider adjusting evening meal timing for better sleep.",
+                'stable': "You're maintaining consistent sleep despite regional factors. Continue your good sleep habits."
+            },
+            'asia': {
+                'strong_improvement': "You've made significant progress despite urban light pollution common in many Asian cities.",
+                'improvement': "In Asian urban areas, consider using room-darkening curtains and white noise to create an optimal sleep environment.",
+                'regression': "The high population density in your region might be affecting your sleep. Consider tools to block out noise and light.",
+                'stable': "You've adapted well to your regional sleep challenges. Maintaining this pattern is excellent for your health."
+            },
+            'other': {
+                'strong_improvement': "You've made excellent progress adapting your sleep to your regional environment.",
+                'improvement': "Consider regional factors like light, noise, and climate that might impact your sleep and address them for better rest.",
+                'regression': "Regional environmental factors might be affecting your sleep lately. Consider adjustments to your sleep environment.",
+                'stable': "You've established a good sleep routine that works well in your region. Continue your successful practices."
+            }
+        }
+        
+        # Return advice if available for this region and trend
+        if region_category in region_advice and trend in region_advice[region_category]:
+            return region_advice[region_category][trend]
+        
+        # Default to 'other' category if specific advice not available
+        if 'other' in region_advice and trend in region_advice['other']:
+            return region_advice['other'][trend]
+        
+        return ""
+    
+    def _extract_profession_category(self, profession):
+        """Extract profession category from profession string"""
+        profession_categories = {
+            'healthcare': ['Nurse', 'Doctor', 'Paramedic', 'Healthcare', 'Medical'],
+            'service': ['Server', 'Bartender', 'Retail', 'Hospitality', 'Customer'],
+            'tech': ['Software', 'Engineer', 'Developer', 'IT', 'Programmer', 'Data'],
+            'education': ['Teacher', 'Professor', 'Educator', 'Instructor', 'Academic'],
+            'office': ['Manager', 'Accountant', 'Administrator', 'Analyst', 'Officer']
+        }
+        
+        for category, keywords in profession_categories.items():
+            if any(keyword.lower() in profession.lower() for keyword in keywords):
+                return category
+                
+        return "other"
+
+    def _extract_region_category(self, region):
+        """Extract region category from region string"""
+        if not isinstance(region, str) or ',' not in region:
+            return "other"
+            
+        parts = region.split(',')
+        country = parts[-1].strip()
+        
+        north_america = ['United States', 'Canada', 'Mexico', 'USA']
+        europe = ['United Kingdom', 'France', 'Germany', 'Italy', 'Spain', 'UK']
+        asia = ['China', 'Japan', 'India', 'Korea', 'Thailand', 'Singapore']
+        
+        if country in north_america:
+            return "north_america"
+        elif country in europe:
+            return "europe"
+        elif country in asia:
+            return "asia"
+        else:
+            return "other"
     
     def save_history(self, filepath):
         """Save message history to file"""

@@ -16,4 +16,4 @@ COPY . .
 ENV PYTHONPATH=/app
 
 # Default command
-CMD ["python", "scripts/run_inference.py"]
+CMD ["python", "scripts/sleep_advisor.py"]
