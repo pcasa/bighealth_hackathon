@@ -8,9 +8,8 @@ services:
       - ./models:/app/models
     environment:
       - ENV=dev
-      - PYTHONUNBUFFERED=1
     ports:
-      - "8000:8000"
+      - "8000:8000"  # API port
 
   api:
     build: 
@@ -21,28 +20,36 @@ services:
       - ./models:/app/models
     environment:
       - ENV=dev
-      - PYTHONUNBUFFERED=1
     ports:
-      - "8001:8000"
+      - "8001:8000"  # Forward API to a different port
     depends_on:
       - app
 
   n8n:
-    image: n8nio/n8n
+    image: n8nio/n8n:latest
     ports:
       - "5678:5678"
     volumes:
-      - ./n8n_workflows:/home/node/.n8n/workflows
       - n8n_data:/home/node/.n8n
+      - ./n8n_workflows:/home/node/.n8n/workflows
     environment:
       - N8N_HOST=n8n
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
+      # Add proper permissions 
       - NODE_ENV=production
-      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_USER_FOLDER=/home/node/.n8n
+    restart: unless-stopped
+    networks:
+      - app_network
     depends_on:
       - app
       - api
 
+networks:
+  app_network:
+    driver: bridge
+
 volumes:
   n8n_data:
+    driver: local

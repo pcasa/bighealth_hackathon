@@ -2,15 +2,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install UV package manager
-RUN pip install uv
-
 # Copy requirements first for layer caching
 COPY requirements.txt .
 
-# Install dependencies using UV and separately install PyTorch 
-RUN uv pip install --system -r requirements.txt && \
-    uv pip install --system torch --no-deps
+# Install dependencies with standard pip
+RUN pip install -r requirements.txt
+
+# Install torch separately (since it needs special handling)
+RUN pip install torch
 
 # Copy the rest of the application
 COPY . .
