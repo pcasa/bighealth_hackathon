@@ -1,0 +1,22 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install UV package manager
+RUN pip install uv
+
+# Copy requirements first for layer caching
+COPY requirements.txt .
+
+# Install dependencies using UV and separately install PyTorch 
+RUN uv pip install --system -r requirements.txt && \
+    uv pip install --system torch --no-deps
+
+# Copy the rest of the application
+COPY . .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+
+# Default command
+CMD ["python", "scripts/sleep_advisor.py"]
