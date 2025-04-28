@@ -2,6 +2,8 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from src.models.improved_sleep_score import ImprovedSleepScoreCalculator
+
 
 # Set up logging
 logging.basicConfig(
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 class Preprocessor:
     def __init__(self, config=None):
         """Initialize the data preprocessor"""
+        self.sleep_score_calculator = ImprovedSleepScoreCalculator()
         self.processed_data = None
         self.config = config or {}
         
@@ -83,6 +86,7 @@ class Preprocessor:
             logger.info("Added user_id from original data")
         
         return processed_data
+    
     def preprocess_sleep_data(self, sleep_data, wearable_data=None, external_data=None):
         """Preprocess and merge sleep data with wearable and external data"""
         # IMPORTANT: Make a copy of sleep_data to avoid modifying the original
@@ -123,6 +127,8 @@ class Preprocessor:
             # Drop specified columns if they exist
             wearable_cols_to_drop = [col for col in columns_to_drop if col in wearable_data.columns]
             wearable_data_cleaned = wearable_data.drop(wearable_cols_to_drop, axis=1, errors='ignore')
+
+            transformed_wearable_data = self.transform_wearable_data(wearable_data_cleaned)
             
             # IMPORTANT: Ensure user_id is preserved in wearable data
             if 'user_id' not in processed_data.columns and 'user_id' in wearable_data.columns:
@@ -147,12 +153,16 @@ class Preprocessor:
             if not valid_merge_columns:
                 logger.info("ERROR: No valid merge columns. Skipping wearable data merge.")
             else:
+                def column_is_type(df, t):
+                    return df.transform(lambda x: x.apply(type).eq(t)).all()
+                
                 # Merge on valid columns
                 processed_data = pd.merge(
                     processed_data, 
-                    wearable_data_cleaned, 
+                    transformed_wearable_data, 
                     on=valid_merge_columns, 
-                    how='left'
+                    how='left',
+                    suffixes=('', '_y')
                 )
             
             # Add calculated wearable features
@@ -199,6 +209,26 @@ class Preprocessor:
             print(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
         
         return processed_data
+    
+    def transform_wearable_data(self, wearable_data):
+        """Transform wearable device data to standard sleep data format"""
+        # Create a copy of the incoming DataFrame to avoid modifying the original
+        transformed_data = wearable_data.copy()
+        
+        # If sleep_score_calculator is initialized, use its transformation method
+        if hasattr(self, 'sleep_score_calculator'):
+            # Get the original transformation as a dictionary
+            transformed_dict = self.sleep_score_calculator.transform_wearable_data(wearable_data.to_dict('records')[0])
+            
+            # Convert the dictionary to a DataFrame with the same index as the original
+            dict_df = pd.DataFrame([transformed_dict], index=wearable_data.index[:1])
+            
+            # Update the transformed data with the new columns
+            for col in dict_df.columns:
+                if col not in transformed_data.columns:
+                    transformed_data[col] = dict_df[col].values[0]
+        
+        return transformed_data
     
     def _add_sleep_features(self, data):
         """Add calculated features from sleep data"""

@@ -11,6 +11,9 @@ import argparse
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from faker import Faker
+
+fake = Faker()
 
 # Add the src directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -93,7 +96,8 @@ def main():
     print(f"✓ Generated {len(users_df)} user profiles saved to {users_file}")
     
     # Create date range
-    end_date = datetime.now() - timedelta(days=1)
+    tmp_start_date = datetime.date(year=2025, month=1, day=1)
+    end_date = fake.date_between(start_date=tmp_start_date, end_date='-1y')
     start_date = end_date - timedelta(days=args.days)
     
     # Generate sleep data

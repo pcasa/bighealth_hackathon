@@ -13,6 +13,7 @@ from datetime import datetime
 from src.models.sleep_quality import SleepQualityModel
 from src.data_processing.preprocessing import Preprocessor
 from src.utils.constants import profession_categories
+from src.models.improved_sleep_score import ImprovedSleepScoreCalculator
 
 class SleepScoreAnalytics:
     """Class for analyzing sleep scores across different dimensions"""
@@ -22,6 +23,7 @@ class SleepScoreAnalytics:
         # Use provided model or create a new one
         self.sleep_quality_model = sleep_quality_model or SleepQualityModel()
         self.preprocessor = Preprocessor()
+        self.sleep_score_calculator = ImprovedSleepScoreCalculator()
         
         # Define age ranges for analysis
         self.age_ranges = [
@@ -129,7 +131,8 @@ class SleepScoreAnalytics:
         
         # Analysis by weekday/weekend
         if 'is_weekend' in data.columns:
-            results['weekday_weekend'] = self.analyze_by_dimension(data, 'is_weekend', metric)
+            # Store the results with key 'is_weekend' instead of 'weekday_weekend'
+            results['is_weekend'] = self.analyze_by_dimension(data, 'is_weekend', metric)
         
         return results
     
@@ -277,9 +280,17 @@ class SleepScoreAnalytics:
     
     def _calculate_score_for_row(self, row):
         """Calculate sleep score for a single row"""
+        # Convert row to dictionary (if it's a pandas Series)
+        sleep_data = row.to_dict() if hasattr(row, 'to_dict') else dict(row)
+        
+        # Calculate score using the improved calculator
+        return self.sleep_score_calculator.calculate_score(sleep_data)
+    
+        """Calculate sleep score for a single row"""
         # Extract basic metrics
         sleep_efficiency = row.get('sleep_efficiency', 0)
         subjective_rating = row.get('subjective_rating')
+        sleep_data = row.to_dict() if hasattr(row, 'to_dict') else dict(row)
         
         # Create additional metrics dictionary
         additional_metrics = {}

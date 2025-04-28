@@ -9,6 +9,8 @@ from typing import List, Dict, Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 
+from scripts.sleep_advisor import get_user_sleep_data
+
 # Add the src directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -592,7 +594,21 @@ async def get_recommendation(user_id: str, days: int = 30):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating recommendation: {str(e)}")
+
+@app.get("/sleep/detailed-score/{user_id}")
+async def get_detailed_sleep_score(user_id: str, date: str = None):
+    """Get a detailed sleep score breakdown for a user's sleep record"""
+    # Get user sleep data for specified date or most recent
+    user_data = get_user_sleep_data(user_id, date)
     
+    if user_data is None:
+        raise HTTPException(status_code=404, detail="No sleep data found")
+    
+    # Calculate detailed score
+    detailed_score = sleep_quality_model.calculate_comprehensive_sleep_score(user_data, include_details=True)
+    
+    return detailed_score
+
 # Helper functions
 def load_user_data():
     """Load user data from CSV file"""

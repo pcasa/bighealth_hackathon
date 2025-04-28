@@ -300,6 +300,35 @@ def main():
     # Preprocess data
     preprocessor = Preprocessor(config['preprocessing'])
     
+    # Ensure all inputs are DataFrames
+    if not isinstance(users_df, pd.DataFrame):
+        print(f"Warning: users_df is not a DataFrame, converting from {type(users_df)}")
+        if isinstance(users_df, dict):
+            users_df = pd.DataFrame([users_df])
+        else:
+            users_df = pd.DataFrame(users_df)
+
+    if not isinstance(sleep_data_df, pd.DataFrame):
+        print(f"Warning: sleep_data_df is not a DataFrame, converting from {type(sleep_data_df)}")
+        if isinstance(sleep_data_df, dict):
+            sleep_data_df = pd.DataFrame([sleep_data_df])
+        else:
+            sleep_data_df = pd.DataFrame(sleep_data_df)
+
+    if wearable_data_df is not None and not isinstance(wearable_data_df, pd.DataFrame):
+        print(f"Warning: wearable_data_df is not a DataFrame, converting from {type(wearable_data_df)}")
+        if isinstance(wearable_data_df, dict):
+            wearable_data_df = pd.DataFrame([wearable_data_df])
+        else:
+            wearable_data_df = pd.DataFrame(wearable_data_df)
+
+    if external_factors_df is not None and not isinstance(external_factors_df, pd.DataFrame):
+        print(f"Warning: external_factors_df is not a DataFrame, converting from {type(external_factors_df)}")
+        if isinstance(external_factors_df, dict):
+            external_factors_df = pd.DataFrame([external_factors_df])
+        else:
+            external_factors_df = pd.DataFrame(external_factors_df)
+    
     processed_data = preprocessor.process(
         users_df, 
         sleep_data_df, 

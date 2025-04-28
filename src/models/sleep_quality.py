@@ -8,6 +8,9 @@ import os
 import yaml
 import json
 from datetime import datetime, timedelta
+from src.models.improved_sleep_score import ImprovedSleepScoreCalculator
+
+
 
 class SleepQualityLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, dropout=0.2):
@@ -25,6 +28,7 @@ class SleepQualityLSTM(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_size, 1)
+        self.sleep_score_calculator = ImprovedSleepScoreCalculator()
     
     def forward(self, x):
         # Initialize hidden state with zeros
@@ -406,58 +410,23 @@ class SleepQualityModel:
     
     def calculate_sleep_score(self, sleep_efficiency, subjective_rating=None, additional_metrics=None):
         """Calculate an overall sleep score based on sleep efficiency and other metrics"""
-        # Base score from sleep efficiency (0.0-1.0 scale)
-        base_score = sleep_efficiency * 100
+        # Create sleep data dictionary from parameters
+        sleep_data = {
+            'sleep_efficiency': sleep_efficiency,
+            'subjective_rating': subjective_rating
+        }
         
-        # Adjust based on subjective rating if available (1-10 scale)
-        if subjective_rating is not None:
-            # Combine objective and subjective measures (70% objective, 30% subjective)
-            adjusted_score = 0.7 * base_score + 0.3 * (subjective_rating * 10)
-        else:
-            adjusted_score = base_score
-        
-        # Additional adjustments based on other metrics
+        # Add additional metrics if available
         if additional_metrics is not None:
-            # Examples of additional adjustments:
-            
-            # Deep sleep percentage (ideal: 15-25%)
-            if 'deep_sleep_percentage' in additional_metrics:
-                deep_pct = additional_metrics['deep_sleep_percentage']
-                if deep_pct < 0.15:
-                    # Penalize low deep sleep
-                    adjusted_score -= (0.15 - deep_pct) * 20
-                elif deep_pct > 0.25:
-                    # Slight bonus for extra deep sleep, up to a point
-                    adjusted_score += min((deep_pct - 0.25) * 10, 5)
-            
-            # REM sleep percentage (ideal: 20-25%)
-            if 'rem_sleep_percentage' in additional_metrics:
-                rem_pct = additional_metrics['rem_sleep_percentage']
-                if rem_pct < 0.2:
-                    # Penalize low REM sleep
-                    adjusted_score -= (0.2 - rem_pct) * 15
-            
-            # Sleep onset latency (ideal: under 20 minutes)
-            if 'sleep_onset_latency_minutes' in additional_metrics:
-                latency = additional_metrics['sleep_onset_latency_minutes']
-                if latency > 20:
-                    # Penalize long sleep onset
-                    adjusted_score -= min((latency - 20) * 0.5, 10)
-            
-            # Awakenings count
-            if 'awakenings_count' in additional_metrics:
-                awakenings = additional_metrics['awakenings_count']
-                if awakenings > 2:
-                    # Penalize many awakenings
-                    adjusted_score -= min((awakenings - 2) * 2.5, 15)
+            sleep_data.update(additional_metrics)
         
-        # Ensure score is in valid range (0-100)
-        final_score = max(0, min(100, adjusted_score))
-        
-        return int(round(final_score))
+        # Use the new calculator
+        return self.sleep_score_calculator.calculate_score(sleep_data)
     
-    # Add this method to the SleepQualityModel class in sleep_quality.py
-
+    def calculate_comprehensive_sleep_score(self, sleep_data, include_details=False):
+        """Calculate a comprehensive sleep score using all available sleep data metrics"""
+        return self.sleep_score_calculator.calculate_score(sleep_data, include_details)
+    
     def predict_with_confidence(self, data, sequence_length=7):
         """Make predictions with the trained model and include confidence scores"""
         if self.model is None:
