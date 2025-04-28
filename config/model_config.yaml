@@ -1,5 +1,6 @@
 # Model configuration
 
+# Update sleep_quality_model section in config
 sleep_quality_model:
   model_type: 'lstm'
   hyperparameters:
@@ -10,15 +11,28 @@ sleep_quality_model:
     batch_size: 64
     epochs: 50
   features:
-    - sleep_duration_hours  # Instead of sleep_duration
+    - sleep_duration_hours
     - sleep_efficiency
     - awakenings_count
-    - total_awake_minutes  # Instead of total_awakening_time
+    - total_awake_minutes
     - deep_sleep_percentage
     - rem_sleep_percentage
-    - sleep_onset_latency_minutes  # Instead of sleep_onset_latency
+    - sleep_onset_latency_minutes
     - heart_rate_variability
     - average_heart_rate
+    # New demographic features
+    - age_normalized
+    - profession_healthcare
+    - profession_tech
+    - profession_service
+    - profession_education
+    - profession_office
+    - profession_other
+    # New seasonal features
+    - season_Winter
+    - season_Spring
+    - season_Summer
+    - season_Fall
 
 anomaly_detection_model:
   model_type: 'isolation_forest'

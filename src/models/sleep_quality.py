@@ -67,7 +67,7 @@ class SleepQualityModel:
     """
 
     def preprocess_data(self, data, sequence_length=7):
-        """Preprocess data for the model with improved error handling"""
+        """Preprocess data for the model with improved error handling and support for demographic factors"""
         print("Starting preprocessing with data shape:", data.shape)
         
         # Verify required columns are present
@@ -94,25 +94,45 @@ class SleepQualityModel:
                     dummy_dates = [base_date + timedelta(days=i) for i in range(sum(date_nas))]
                     data.loc[date_nas, 'date'] = dummy_dates
         
+        # Add season feature based on month
+        data['month'] = data['date'].dt.month
+        data['season'] = self._get_season(data['month'])
+        
+        # Add seasonal one-hot encoding
+        seasons = ['Winter', 'Spring', 'Summer', 'Fall']
+        for season in seasons:
+            data[f'season_{season}'] = (data['season'] == season).astype(float)
+        
+        # Process age if available
+        if 'age' in data.columns:
+            # Add age-range features
+            data['age_range'] = self._get_age_range(data['age'])
+            
+            # Add normalized age
+            data['age_normalized'] = data['age'] / 100.0  # Simple normalization
+        
+        # Process profession if available
+        if 'profession' in data.columns and 'profession_category' not in data.columns:
+            data['profession_category'] = data['profession'].apply(self._categorize_profession)
+        
+        # Add profession one-hot encoding if available
+        if 'profession_category' in data.columns:
+            prof_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
+            for category in prof_categories:
+                data[f'profession_{category}'] = (data['profession_category'] == category).astype(float)
+        
         # Ensure features are in the right format
         required_features = self.config['features']
         available_features = [col for col in required_features if col in data.columns]
         
-        if len(available_features) < len(required_features):
-            missing = set(required_features) - set(available_features)
-            print(f"Warning: Missing features: {missing}")
-            
-            # Create dummy columns for missing features if needed
-            for missing_feature in missing:
-                if missing_feature in self.config.get('required_features', []):
-                    error_msg = f"Required feature missing: {missing_feature}"
-                    print(error_msg)
-                    raise ValueError(error_msg)
-                else:
-                    # Fill with zeros
-                    print(f"Creating dummy column for missing feature: {missing_feature}")
-                    data[missing_feature] = 0.0
-                    available_features.append(missing_feature)
+        # Add demographic and seasonal features if available
+        demographic_features = [col for col in data.columns if (
+            col.startswith('season_') or 
+            col.startswith('profession_') or 
+            col == 'age_normalized'
+        )]
+        
+        available_features.extend([f for f in demographic_features if f not in available_features])
         
         # Group by user to create sequences
         try:
@@ -172,9 +192,46 @@ class SleepQualityModel:
         y = torch.FloatTensor(np.array(targets)).view(-1, 1)
         
         return X, y, user_ids, dates, available_features
-    
-    # Add this method to your SleepQualityModel class
 
+    # Helper methods for demographic and seasonal features
+    def _get_season(self, month):
+        """Determine season from month (Northern Hemisphere)"""
+        if isinstance(month, pd.Series):
+            return month.apply(self._get_season)
+        
+        if month in [12, 1, 2]:
+            return 'Winter'
+        elif month in [3, 4, 5]:
+            return 'Spring'
+        elif month in [6, 7, 8]:
+            return 'Summer'
+        else:
+            return 'Fall'
+
+    def _get_age_range(self, age):
+        """Convert age to categorical range"""
+        if isinstance(age, pd.Series):
+            return age.apply(self._get_age_range)
+        
+        if age < 30:
+            return 'young_adult'
+        elif age < 50:
+            return 'middle_age'
+        elif age < 65:
+            return 'senior'
+        else:
+            return 'elderly'
+
+    def _categorize_profession(self, profession):
+        """Categorize profession based on keywords"""
+        from src.utils.constants import profession_categories
+        
+        for category, keywords in profession_categories.items():
+            if any(keyword.lower() in profession.lower() for keyword in keywords):
+                return category
+        return "other"
+
+    # Add this method to your SleepQualityModel class
     def train_with_limited_data(self, data):
         """Alternative training approach when there isn't enough sequence data"""
         print("Using alternative training method for limited data")
@@ -423,9 +480,132 @@ class SleepQualityModel:
         # Use the new calculator
         return self.sleep_score_calculator.calculate_score(sleep_data)
     
-    def calculate_comprehensive_sleep_score(self, sleep_data, include_details=False):
-        """Calculate a comprehensive sleep score using all available sleep data metrics"""
-        return self.sleep_score_calculator.calculate_score(sleep_data, include_details)
+    def calculate_comprehensive_sleep_score(self, sleep_data, include_details=True):
+        """
+        Calculate a comprehensive sleep score using all available sleep data metrics
+        including age, profession, and seasonal context.
+        
+        Args:
+            sleep_data: Dict containing sleep metrics and user attributes
+            include_details: If True, return component scores along with total
+            
+        Returns:
+            dict: Sleep score and component details
+        """
+        # Get basic sleep score from the calculator
+        basic_score = self.sleep_score_calculator.calculate_score(sleep_data, include_details=True)
+        
+        # Extract components and base score
+        component_scores = basic_score['component_scores']
+        base_score = basic_score['total_score']
+        
+        # Apply demographic adjustments
+        adjustment = 0
+        
+        # Age-based adjustments
+        if 'age' in sleep_data:
+            age = sleep_data['age']
+            if age < 25:
+                # Young adults may need more sleep
+                if 'sleep_duration_hours' in sleep_data and sleep_data['sleep_duration_hours'] < 7:
+                    adjustment -= 2  # Penalize insufficient sleep more for young adults
+            elif age > 65:
+                # Elderly often have more fragmented sleep naturally
+                if 'awakenings_count' in sleep_data and component_scores.get('continuity', 0) < 70:
+                    adjustment += 3  # Less penalty for awakenings in elderly
+                
+                # Elderly often go to bed earlier
+                if 'bedtime' in sleep_data:
+                    hour = sleep_data['bedtime'].hour if hasattr(sleep_data['bedtime'], 'hour') else 22
+                    if hour < 21:  # Before 9 PM
+                        adjustment += 2  # Earlier bedtime can be appropriate for elderly
+        
+        # Profession-based adjustments
+        if 'profession_category' in sleep_data:
+            profession = sleep_data['profession_category']
+            
+            if profession == 'healthcare' or profession == 'shift_worker':
+                # Healthcare workers and shift workers often have disrupted schedules
+                if 'sleep_pattern' in sleep_data and sleep_data['sleep_pattern'] == 'shift_worker':
+                    if component_scores.get('timing', 0) < 70:
+                        adjustment += 5  # Less penalty for unusual sleep timing
+            
+            elif profession in ['tech', 'office']:
+                # Office/tech workers often have sedentary jobs with high screen time
+                if 'deep_sleep_percentage' in sleep_data and sleep_data['deep_sleep_percentage'] < 0.15:
+                    adjustment -= 3  # Penalize low deep sleep more for sedentary workers
+        
+        # Season-based adjustments
+        if 'season' in sleep_data or 'month' in sleep_data:
+            # Determine season if not directly provided
+            season = sleep_data.get('season')
+            if not season and 'month' in sleep_data:
+                month = sleep_data['month']
+                if isinstance(month, int) and 1 <= month <= 12:
+                    if month in [12, 1, 2]:
+                        season = 'Winter'
+                    elif month in [3, 4, 5]:
+                        season = 'Spring'
+                    elif month in [6, 7, 8]:
+                        season = 'Summer'
+                    else:
+                        season = 'Fall'
+            
+            if season:
+                if season == 'Winter':
+                    # Winter: people naturally sleep longer
+                    if 'sleep_duration_hours' in sleep_data:
+                        if sleep_data['sleep_duration_hours'] > 8:
+                            adjustment += 1  # Natural to sleep longer in winter
+                elif season == 'Summer':
+                    # Summer: more daylight can affect sleep
+                    if 'sleep_onset_latency_minutes' in sleep_data and sleep_data['sleep_onset_latency_minutes'] > 20:
+                        adjustment += 2  # More tolerance for longer sleep onset in summer
+        
+        # Apply the adjustment (limited to ±10 points)
+        adjusted_score = base_score + max(-10, min(10, adjustment))
+        
+        # Ensure score is within valid range
+        final_score = max(0, min(100, adjusted_score))
+        
+        # Add adjustment explanation to results
+        result = {
+            'total_score': final_score,
+            'base_score': base_score,
+            'component_scores': component_scores,
+            'demographic_adjustment': adjustment
+        }
+        
+        # Add explanation of adjustments
+        if adjustment != 0:
+            adjustment_reasons = []
+            
+            if 'age' in sleep_data:
+                if age < 25 and 'sleep_duration_hours' in sleep_data and sleep_data['sleep_duration_hours'] < 7:
+                    adjustment_reasons.append("Young adults need more sleep")
+                elif age > 65:
+                    if 'awakenings_count' in sleep_data and component_scores.get('continuity', 0) < 70:
+                        adjustment_reasons.append("Older adults naturally have more awakenings")
+                    if 'bedtime' in sleep_data:
+                        hour = sleep_data['bedtime'].hour if hasattr(sleep_data['bedtime'], 'hour') else 22
+                        if hour < 21:
+                            adjustment_reasons.append("Earlier bedtime appropriate for older adults")
+            
+            if 'profession_category' in sleep_data:
+                if profession in ['healthcare', 'shift_worker'] and component_scores.get('timing', 0) < 70:
+                    adjustment_reasons.append(f"{profession.title()} workers often have disrupted schedules")
+                elif profession in ['tech', 'office'] and 'deep_sleep_percentage' in sleep_data and sleep_data['deep_sleep_percentage'] < 0.15:
+                    adjustment_reasons.append("Office workers need more deep sleep to offset sedentary work")
+            
+            if season:
+                if season == 'Winter' and 'sleep_duration_hours' in sleep_data and sleep_data['sleep_duration_hours'] > 8:
+                    adjustment_reasons.append("Longer sleep in winter is natural")
+                elif season == 'Summer' and 'sleep_onset_latency_minutes' in sleep_data and sleep_data['sleep_onset_latency_minutes'] > 20:
+                    adjustment_reasons.append("Longer daylight in summer can affect sleep onset")
+            
+            result['adjustment_reasons'] = adjustment_reasons
+        
+        return result
     
     def predict_with_confidence(self, data, sequence_length=7):
         """Make predictions with the trained model and include confidence scores"""
