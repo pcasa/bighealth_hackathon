@@ -32,17 +32,14 @@ services:
     ports:
       - "5678:5678"
     volumes:
-      - n8n_data:/home/node/.n8n
       - ./n8n_workflows:/home/node/.n8n/workflows
+      - n8n_data:/home/node/.n8n
     environment:
       - N8N_HOST=n8n
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - N8N_CONFIG_FILES=
       - NODE_ENV=production
-      - DB_TYPE=sqlite
-      - DB_SQLITE_VACUUM_ON_STARTUP=true
-    restart: unless-stopped
+      - N8N_DIAGNOSTICS_ENABLED=false
     depends_on:
       - app
       - api
