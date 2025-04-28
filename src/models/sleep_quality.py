@@ -480,27 +480,256 @@ class SleepQualityModel:
         # Use the new calculator
         return self.sleep_score_calculator.calculate_score(sleep_data)
     
-    def calculate_comprehensive_sleep_score(self, sleep_data, include_details=True):
+    def calculate_comprehensive_sleep_score(sleep_data, include_details=True):
         """
         Calculate a comprehensive sleep score using all available sleep data metrics
-        including age, profession, and seasonal context.
+        including basic sleep metrics, demographics, and external factors.
         
         Args:
-            sleep_data: Dict containing sleep metrics and user attributes
+            sleep_data: Dict containing all sleep metrics and user attributes
             include_details: If True, return component scores along with total
             
         Returns:
             dict: Sleep score and component details
         """
-        # Get basic sleep score from the calculator
-        basic_score = self.sleep_score_calculator.calculate_score(sleep_data, include_details=True)
+        # Initialize component scores dictionary
+        component_scores = {}
         
-        # Extract components and base score
-        component_scores = basic_score['component_scores']
-        base_score = basic_score['total_score']
+        # 1. Duration component (0-100)
+        if 'sleep_duration_hours' in sleep_data:
+            duration = sleep_data['sleep_duration_hours']
+            # Ideal range: 7-9 hours
+            if duration < 7:
+                # Too little sleep - penalize more severely
+                component_scores['duration'] = max(0, 70 * duration / 7)
+            elif duration <= 9:
+                # Ideal range - full score
+                component_scores['duration'] = 100
+            else:
+                # Too much sleep - gentle penalty
+                component_scores['duration'] = max(70, 100 - 15 * (duration - 9))
+        
+        # 2. Efficiency component (0-100)
+        if 'sleep_efficiency' in sleep_data:
+            efficiency = sleep_data['sleep_efficiency']
+            # Ideal range: 0.85-0.95
+            if efficiency < 0.85:
+                # Below ideal - score decreases linearly
+                component_scores['efficiency'] = 100 * efficiency / 0.85
+            elif efficiency <= 0.95:
+                # Ideal range - full score
+                component_scores['efficiency'] = 100
+            else:
+                # Above ideal - small penalty
+                component_scores['efficiency'] = max(80, 100 - 200 * (efficiency - 0.95))
+        elif 'sleep_duration_hours' in sleep_data and 'time_in_bed_hours' in sleep_data:
+            # Calculate if not provided directly
+            efficiency = sleep_data['sleep_duration_hours'] / sleep_data['time_in_bed_hours']
+            efficiency = max(0, min(1, efficiency))
+            if efficiency < 0.85:
+                component_scores['efficiency'] = 100 * efficiency / 0.85
+            elif efficiency <= 0.95:
+                component_scores['efficiency'] = 100
+            else:
+                component_scores['efficiency'] = max(80, 100 - 200 * (efficiency - 0.95))
+        
+        # 3. Sleep onset component (0-100)
+        if 'sleep_onset_latency_minutes' in sleep_data:
+            latency = sleep_data['sleep_onset_latency_minutes']
+            if latency < 5:
+                # Too quick - may indicate exhaustion
+                component_scores['onset'] = 80
+            elif latency <= 20:
+                # Ideal range - full score
+                component_scores['onset'] = 100
+            elif latency <= 30:
+                # Slightly delayed - mild penalty
+                component_scores['onset'] = 90 - (latency - 20)
+            elif latency <= 60:
+                # Moderately delayed - steeper penalty
+                component_scores['onset'] = 80 - (latency - 30) * 1.5
+            else:
+                # Severely delayed - largest penalty
+                component_scores['onset'] = max(0, 35 - (latency - 60) * 0.35)
+        elif 'bedtime' in sleep_data and 'sleep_onset_time' in sleep_data:
+            # Calculate if not provided directly
+            from datetime import datetime
+            if isinstance(sleep_data['bedtime'], str):
+                bedtime = datetime.strptime(sleep_data['bedtime'], '%Y-%m-%d %H:%M:%S')
+            else:
+                bedtime = sleep_data['bedtime']
+                
+            if isinstance(sleep_data['sleep_onset_time'], str):
+                sleep_onset = datetime.strptime(sleep_data['sleep_onset_time'], '%Y-%m-%d %H:%M:%S')
+            else:
+                sleep_onset = sleep_data['sleep_onset_time']
+            
+            latency = (sleep_onset - bedtime).total_seconds() / 60
+            if latency < 5:
+                component_scores['onset'] = 80
+            elif latency <= 20:
+                component_scores['onset'] = 100
+            elif latency <= 30:
+                component_scores['onset'] = 90 - (latency - 20)
+            elif latency <= 60:
+                component_scores['onset'] = 80 - (latency - 30) * 1.5
+            else:
+                component_scores['onset'] = max(0, 35 - (latency - 60) * 0.35)
+        
+        # 4. Continuity component (awakenings and time awake) (0-100)
+        awakenings_score = None
+        if 'awakenings_count' in sleep_data:
+            awakenings = sleep_data['awakenings_count']
+            if awakenings <= 2:
+                # Ideal range - full score
+                awakenings_score = 100
+            else:
+                # Penalize each additional awakening
+                awakenings_score = max(0, 100 - 10 * (awakenings - 2))
+        
+        awake_time_score = None
+        if 'total_awake_minutes' in sleep_data:
+            awake_time = sleep_data['total_awake_minutes']
+            if awake_time <= 20:
+                # Ideal range - full score
+                awake_time_score = 100
+            elif awake_time <= 45:
+                # Mild disruption
+                awake_time_score = 90 - (awake_time - 20) * 0.8
+            else:
+                # Severe disruption
+                awake_time_score = max(0, 70 - (awake_time - 45) * 0.7)
+        elif 'time_awake_minutes' in sleep_data:
+            # Alternative field name
+            awake_time = sleep_data['time_awake_minutes']
+            if awake_time <= 20:
+                awake_time_score = 100
+            elif awake_time <= 45:
+                awake_time_score = 90 - (awake_time - 20) * 0.8
+            else:
+                awake_time_score = max(0, 70 - (awake_time - 45) * 0.7)
+        
+        # Combine awakening scores if both are available
+        if awakenings_score is not None and awake_time_score is not None:
+            # Weight time awake more heavily than count
+            component_scores['continuity'] = 0.4 * awakenings_score + 0.6 * awake_time_score
+        elif awakenings_score is not None:
+            component_scores['continuity'] = awakenings_score
+        elif awake_time_score is not None:
+            component_scores['continuity'] = awake_time_score
+        
+        # 5. Timing component (bedtime and waketime) (0-100)
+        bedtime_score = None
+        if 'bedtime' in sleep_data:
+            # Extract hour from datetime
+            if hasattr(sleep_data['bedtime'], 'hour'):
+                bedtime_hour = sleep_data['bedtime'].hour
+            else:
+                # Try to parse from string
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(sleep_data['bedtime'], '%Y-%m-%d %H:%M:%S')
+                    bedtime_hour = dt.hour
+                except:
+                    bedtime_hour = None
+            
+            if bedtime_hour is not None:
+                # Handle after midnight (early hours are actually late)
+                if bedtime_hour < 5:
+                    bedtime_hour += 24
+                
+                # Ideal bedtime: 9pm-11pm (21-23)
+                if bedtime_hour < 21:
+                    # Too early
+                    bedtime_score = 70 + 15 * (bedtime_hour / 21)
+                elif bedtime_hour <= 23:
+                    # Ideal range
+                    bedtime_score = 100
+                elif bedtime_hour <= 25:  # Up to 1 AM
+                    # Slightly late
+                    bedtime_score = 100 - 15 * (bedtime_hour - 23) / 2
+                else:
+                    # Very late
+                    bedtime_score = max(40, 85 - 15 * (bedtime_hour - 25))
+        
+        waketime_score = None
+        if 'wake_time' in sleep_data:
+            # Extract hour from datetime
+            if hasattr(sleep_data['wake_time'], 'hour'):
+                waketime_hour = sleep_data['wake_time'].hour
+            else:
+                # Try to parse from string
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(sleep_data['wake_time'], '%Y-%m-%d %H:%M:%S')
+                    waketime_hour = dt.hour
+                except:
+                    waketime_hour = None
+            
+            if waketime_hour is not None:
+                # Ideal wake time: 6am-8am (6-8)
+                if waketime_hour < 5:
+                    # Very early
+                    waketime_score = max(40, 70 * waketime_hour / 5)
+                elif waketime_hour < 6:
+                    # Slightly early
+                    waketime_score = 80 + 20 * (waketime_hour - 5)
+                elif waketime_hour <= 8:
+                    # Ideal range
+                    waketime_score = 100
+                elif waketime_hour <= 10:
+                    # Slightly late
+                    waketime_score = 100 - 15 * (waketime_hour - 8) / 2
+                else:
+                    # Very late
+                    waketime_score = max(40, 85 - 15 * (waketime_hour - 10))
+        
+        # Combine timing scores if both are available
+        if bedtime_score is not None and waketime_score is not None:
+            component_scores['timing'] = (bedtime_score + waketime_score) / 2
+        elif bedtime_score is not None:
+            component_scores['timing'] = bedtime_score
+        elif waketime_score is not None:
+            component_scores['timing'] = waketime_score
+        
+        # 6. Subjective component (0-100)
+        if 'subjective_rating' in sleep_data:
+            rating = sleep_data['subjective_rating']
+            # Convert rating to 0-100 scale 
+            if 1 <= rating <= 10:
+                component_scores['subjective'] = (rating - 1) / 9 * 100
+            elif 0 <= rating <= 100:
+                component_scores['subjective'] = rating
+        
+        # Calculate base score using weighted components
+        component_weights = {
+            'duration': 0.20,  # Sleep duration
+            'efficiency': 0.15,  # Sleep efficiency
+            'onset': 0.15,      # Sleep onset latency
+            'continuity': 0.20, # Sleep continuity
+            'timing': 0.10,     # Sleep timing
+            'subjective': 0.20  # Subjective rating
+        }
+        
+        # Handle special case: no sleep
+        if sleep_data.get('no_sleep', False):
+            base_score = 0
+        else:
+            # Calculate weighted average with available components
+            weighted_score = 0
+            total_weight = 0
+            
+            for component, weight in component_weights.items():
+                if component in component_scores:
+                    weighted_score += component_scores[component] * weight
+                    total_weight += weight
+            
+            # Normalize if not all components are available
+            base_score = weighted_score / total_weight * 100 if total_weight > 0 else 50
         
         # Apply demographic adjustments
         adjustment = 0
+        adjustment_reasons = []
         
         # Age-based adjustments
         if 'age' in sleep_data:
@@ -509,103 +738,104 @@ class SleepQualityModel:
                 # Young adults may need more sleep
                 if 'sleep_duration_hours' in sleep_data and sleep_data['sleep_duration_hours'] < 7:
                     adjustment -= 2  # Penalize insufficient sleep more for young adults
+                    adjustment_reasons.append("Young adults need more sleep")
             elif age > 65:
                 # Elderly often have more fragmented sleep naturally
                 if 'awakenings_count' in sleep_data and component_scores.get('continuity', 0) < 70:
                     adjustment += 3  # Less penalty for awakenings in elderly
-                
-                # Elderly often go to bed earlier
-                if 'bedtime' in sleep_data:
-                    hour = sleep_data['bedtime'].hour if hasattr(sleep_data['bedtime'], 'hour') else 22
-                    if hour < 21:  # Before 9 PM
-                        adjustment += 2  # Earlier bedtime can be appropriate for elderly
+                    adjustment_reasons.append("Older adults naturally have more awakenings")
         
         # Profession-based adjustments
         if 'profession_category' in sleep_data:
             profession = sleep_data['profession_category']
             
-            if profession == 'healthcare' or profession == 'shift_worker':
+            if profession in ['healthcare', 'shift_worker']:
                 # Healthcare workers and shift workers often have disrupted schedules
-                if 'sleep_pattern' in sleep_data and sleep_data['sleep_pattern'] == 'shift_worker':
-                    if component_scores.get('timing', 0) < 70:
-                        adjustment += 5  # Less penalty for unusual sleep timing
+                if component_scores.get('timing', 0) < 70:
+                    adjustment += 5  # Less penalty for unusual sleep timing
+                    adjustment_reasons.append(f"{profession.title()} workers often have disrupted schedules")
+                
+                # Also adjust for sleep efficiency and continuity
+                if component_scores.get('continuity', 0) < 70:
+                    adjustment += 3  # Less penalty for fragmented sleep in shift workers
+                    adjustment_reasons.append(f"{profession.title()} workers often experience fragmented sleep")
             
-            elif profession in ['tech', 'office']:
-                # Office/tech workers often have sedentary jobs with high screen time
+            elif profession == 'tech':
+                # Tech workers often have high screen time and sedentary work
                 if 'deep_sleep_percentage' in sleep_data and sleep_data['deep_sleep_percentage'] < 0.15:
-                    adjustment -= 3  # Penalize low deep sleep more for sedentary workers
-        
-        # Season-based adjustments
-        if 'season' in sleep_data or 'month' in sleep_data:
-            # Determine season if not directly provided
-            season = sleep_data.get('season')
-            if not season and 'month' in sleep_data:
-                month = sleep_data['month']
-                if isinstance(month, int) and 1 <= month <= 12:
-                    if month in [12, 1, 2]:
-                        season = 'Winter'
-                    elif month in [3, 4, 5]:
-                        season = 'Spring'
-                    elif month in [6, 7, 8]:
-                        season = 'Summer'
-                    else:
-                        season = 'Fall'
+                    adjustment -= 3  # Penalize low deep sleep more for tech workers
+                    adjustment_reasons.append("Tech workers need adequate deep sleep to offset screen exposure")
+                
+                # Late-night work is common
+                if component_scores.get('timing', 0) < 70 and 'bedtime' in sleep_data:
+                    hour = sleep_data['bedtime'].hour if hasattr(sleep_data['bedtime'], 'hour') else 22
+                    if hour > 23:  # Past 11 PM
+                        adjustment += 2  # Less penalty for later bedtimes
+                        adjustment_reasons.append("Tech workers often have later work hours")
             
-            if season:
-                if season == 'Winter':
-                    # Winter: people naturally sleep longer
-                    if 'sleep_duration_hours' in sleep_data:
-                        if sleep_data['sleep_duration_hours'] > 8:
-                            adjustment += 1  # Natural to sleep longer in winter
-                elif season == 'Summer':
-                    # Summer: more daylight can affect sleep
-                    if 'sleep_onset_latency_minutes' in sleep_data and sleep_data['sleep_onset_latency_minutes'] > 20:
-                        adjustment += 2  # More tolerance for longer sleep onset in summer
+            elif profession == 'service':
+                # Service industry often has variable shifts
+                if component_scores.get('timing', 0) < 70:
+                    adjustment += 3  # Less penalty for variable timing
+                    adjustment_reasons.append("Service industry often requires variable shifts")
+            
+            elif profession == 'education':
+                # Educators often have early start times
+                if 'wake_time' in sleep_data:
+                    hour = sleep_data['wake_time'].hour if hasattr(sleep_data['wake_time'], 'hour') else 6
+                    if hour < 6:  # Very early waketime
+                        adjustment += 3  # Less penalty for early rising
+                        adjustment_reasons.append("Educators often need to wake up very early")
+            
+            elif profession == 'office':
+                # Office workers tend to be sedentary
+                if 'sleep_duration_hours' in sleep_data and sleep_data['sleep_duration_hours'] < 7:
+                    adjustment -= 2  # Greater penalty for insufficient sleep
+                    adjustment_reasons.append("Sedentary office workers need adequate sleep for health")
+            
+            elif profession == 'creative':
+                # Creative professionals often have variable schedules
+                if component_scores.get('timing', 0) < 70:
+                    adjustment += 3  # Less penalty for irregular timing
+                    adjustment_reasons.append("Creative professionals often work with flexible schedules")
+                
+                # May have later bedtimes during creative periods
+                if 'bedtime' in sleep_data:
+                    hour = sleep_data['bedtime'].hour if hasattr(sleep_data['bedtime'], 'hour') else 22
+                    if hour > 23:  # Past 11 PM
+                        adjustment += 2  # Less penalty for later bedtimes
+                        adjustment_reasons.append("Creative work often peaks in evening/night hours")
+            
+            elif profession == 'retired':
+                # Retired individuals often have more flexibility but may have age-related sleep changes
+                if component_scores.get('continuity', 0) < 70:
+                    adjustment += 4  # Much less penalty for fragmented sleep
+                    adjustment_reasons.append("Retired individuals commonly experience more fragmented sleep")
+                
+                # Earlier bedtimes are common and healthy
+                if 'bedtime' in sleep_data:
+                    hour = sleep_data['bedtime'].hour if hasattr(sleep_data['bedtime'], 'hour') else 22
+                    if hour < 21:  # Before 9 PM
+                        adjustment += 3  # Reward earlier bedtimes for retired people
+                        adjustment_reasons.append("Earlier bedtimes are natural for retired individuals")
         
+
         # Apply the adjustment (limited to ±10 points)
         adjusted_score = base_score + max(-10, min(10, adjustment))
         
         # Ensure score is within valid range
         final_score = max(0, min(100, adjusted_score))
         
-        # Add adjustment explanation to results
-        result = {
-            'total_score': final_score,
-            'base_score': base_score,
-            'component_scores': component_scores,
-            'demographic_adjustment': adjustment
-        }
-        
-        # Add explanation of adjustments
-        if adjustment != 0:
-            adjustment_reasons = []
-            
-            if 'age' in sleep_data:
-                if age < 25 and 'sleep_duration_hours' in sleep_data and sleep_data['sleep_duration_hours'] < 7:
-                    adjustment_reasons.append("Young adults need more sleep")
-                elif age > 65:
-                    if 'awakenings_count' in sleep_data and component_scores.get('continuity', 0) < 70:
-                        adjustment_reasons.append("Older adults naturally have more awakenings")
-                    if 'bedtime' in sleep_data:
-                        hour = sleep_data['bedtime'].hour if hasattr(sleep_data['bedtime'], 'hour') else 22
-                        if hour < 21:
-                            adjustment_reasons.append("Earlier bedtime appropriate for older adults")
-            
-            if 'profession_category' in sleep_data:
-                if profession in ['healthcare', 'shift_worker'] and component_scores.get('timing', 0) < 70:
-                    adjustment_reasons.append(f"{profession.title()} workers often have disrupted schedules")
-                elif profession in ['tech', 'office'] and 'deep_sleep_percentage' in sleep_data and sleep_data['deep_sleep_percentage'] < 0.15:
-                    adjustment_reasons.append("Office workers need more deep sleep to offset sedentary work")
-            
-            if season:
-                if season == 'Winter' and 'sleep_duration_hours' in sleep_data and sleep_data['sleep_duration_hours'] > 8:
-                    adjustment_reasons.append("Longer sleep in winter is natural")
-                elif season == 'Summer' and 'sleep_onset_latency_minutes' in sleep_data and sleep_data['sleep_onset_latency_minutes'] > 20:
-                    adjustment_reasons.append("Longer daylight in summer can affect sleep onset")
-            
-            result['adjustment_reasons'] = adjustment_reasons
-        
-        return result
+        if include_details:
+            return {
+                'total_score': int(round(final_score)),
+                'base_score': int(round(base_score)),
+                'component_scores': component_scores,
+                'demographic_adjustment': adjustment,
+                'adjustment_reasons': adjustment_reasons if adjustment != 0 else []
+            }
+        else:
+            return int(round(final_score))
     
     def predict_with_confidence(self, data, sequence_length=7):
         """Make predictions with the trained model and include confidence scores"""

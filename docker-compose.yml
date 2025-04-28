@@ -8,6 +8,7 @@ services:
       - ./models:/app/models
     environment:
       - ENV=dev
+      - PYTHONUNBUFFERED=1  # Added for better logging
     ports:
       - "8000:8000"  # API port
 
@@ -20,6 +21,7 @@ services:
       - ./models:/app/models
     environment:
       - ENV=dev
+      - PYTHONUNBUFFERED=1  # Added for better logging
     ports:
       - "8001:8000"  # Forward API to a different port
     depends_on:
