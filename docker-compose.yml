@@ -8,9 +8,9 @@ services:
       - ./models:/app/models
     environment:
       - ENV=dev
-      - PYTHONUNBUFFERED=1  # Added for better logging
+      - PYTHONUNBUFFERED=1
     ports:
-      - "8000:8000"  # API port
+      - "8000:8000"
 
   api:
     build: 
@@ -21,9 +21,9 @@ services:
       - ./models:/app/models
     environment:
       - ENV=dev
-      - PYTHONUNBUFFERED=1  # Added for better logging
+      - PYTHONUNBUFFERED=1
     ports:
-      - "8001:8000"  # Forward API to a different port
+      - "8001:8000"
     depends_on:
       - app
 
@@ -33,10 +33,16 @@ services:
       - "5678:5678"
     volumes:
       - ./n8n_workflows:/home/node/.n8n/workflows
+      - n8n_data:/home/node/.n8n
     environment:
       - N8N_HOST=n8n
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - N8N_DIAGNOSTICS_ENABLED=false
     depends_on:
       - app
       - api
+
+volumes:
+  n8n_data:
