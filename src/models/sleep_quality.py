@@ -980,7 +980,7 @@ class SleepQualityModel:
         print(f"Model loaded from {filepath}")
         
     def generate_model_card(self, filepath, performance_metrics=None, training_data_description=None):
-        """Generate a model card for the sleep quality model"""
+        """Generate a comprehensive model card for the sleep quality model"""
         if self.model is None:
             raise ValueError("No trained model available")
         
@@ -993,7 +993,7 @@ class SleepQualityModel:
             "version": "1.0",
             "created_date": datetime.now().strftime("%Y-%m-%d"),
             "model_type": "LSTM Neural Network",
-            "purpose": "Predict sleep efficiency and calculate sleep quality scores",
+            "description": "Sequence-based deep learning model for sleep quality analysis and prediction",
             "features": self.feature_columns,
             "hyperparameters": self.config['hyperparameters'],
             "architecture": {
@@ -1004,19 +1004,111 @@ class SleepQualityModel:
             },
             "performance_metrics": performance_metrics or {},
             "training_data": training_data_description or "Not specified",
-            "intended_use": "Analyzing sleep patterns and providing personalized sleep quality scores",
+            
+            # Primary prediction targets
+            "primary_predictions": {
+                "sleep_efficiency": "Ratio of time asleep to time in bed (0-1)",
+                "sleep_score": "Comprehensive score of sleep quality (0-100)",
+                "anomaly_detection": "Detection of unusual sleep patterns compared to user baseline"
+            },
+            
+            # Prediction confidence information
+            "confidence_scoring": {
+                "confidence_range": "Confidence scores from 0.1 (low) to 0.95 (high)",
+                "confidence_factors": [
+                    "Amount of available historical data",
+                    "Consistency of sleep patterns",
+                    "Quality of input data", 
+                    "Pattern type (insomnia patterns have lower confidence)",
+                    "Data completeness (more metrics = higher confidence)"
+                ],
+                "confidence_representation": "All predictions include a confidence score"
+            },
+            
+            # Sleep pattern classification
+            "pattern_classification": {
+                "patterns": [
+                    "Normal Sleeper Pattern", 
+                    "Insomnia Pattern", 
+                    "Shift Worker Pattern",
+                    "Oversleeper Pattern", 
+                    "Highly Variable Sleeper"
+                ],
+                "classification_method": "Combination of neural network analysis and rule-based detection"
+            },
+            
+            # Demographic analysis capabilities
+            "demographic_analysis": {
+                "dimensions": [
+                    "Age Group Analysis",
+                    "Profession Category Analysis",
+                    "Geographic Region Analysis",
+                    "Seasonal Pattern Analysis"
+                ],
+                "analysis_types": [
+                    "Cross-sectional comparisons",
+                    "Trend analysis over time",
+                    "Impact assessment by demographic factor"
+                ]
+            },
+            
+            # Future predictions
+            "future_predictions": {
+                "next_night_efficiency": "Predicted sleep efficiency for the following night",
+                "optimal_bedtime": "Recommended bedtime for maximizing sleep quality",
+                "optimal_waketime": "Recommended wake time for maximizing sleep quality",
+                "trend_prediction": "Expected improvement, stability, or decline in sleep quality",
+                "prediction_horizon": "1-7 days depending on data quality and consistency"
+            },
+            
+            "intended_use": "Analyzing sleep patterns and providing personalized sleep quality scores and recommendations",
             "limitations": [
-                "Requires at least 7 days of consecutive sleep data",
+                "Requires at least 7 days of consecutive sleep data for sequence-based predictions",
                 "May not be accurate for users with highly irregular sleep patterns",
-                "Not clinically validated for sleep disorder diagnosis"
+                "Not clinically validated for sleep disorder diagnosis",
+                "Confidence decreases with sparse or inconsistent data",
+                "Transfer learning adaptation needed for users with limited data"
             ],
             "ethical_considerations": [
                 "Should not be used as the sole basis for medical decisions",
-                "Privacy considerations for handling sensitive sleep data"
+                "Privacy considerations for handling sensitive sleep data",
+                "Potential bias in demographic analysis due to training data distribution"
             ],
             "maintenance": {
                 "recommended_retraining_frequency": "Every 3 months with new data",
                 "data_drift_monitoring": "Implemented to detect changes in feature distributions"
+            },
+            "predictive_capabilities": {
+                "sleep_quality_predictions": [
+                    "Sleep efficiency trends over time based on user-reported data",
+                    "Probability of experiencing insomnia on upcoming nights",
+                    "Estimated sleep quality for the coming night based on recent patterns",
+                    "Expected subjective ratings if certain behaviors are modified"
+                ],
+                "pattern_recognition": [
+                    "Sleep consistency patterns and how they affect overall sleep quality",
+                    "Identification of insomnia triggers based on correlations in the data",
+                    "Detection of severe insomnia episodes before they become chronic",
+                    "Recognition of improvement trends even when subjective perception lags"
+                ],
+                "personalized_insights": [
+                    "Most effective sleep window based on recorded sleep efficiency data",
+                    "Optimal bedtime and wake time for maximum sleep quality",
+                    "Personal threshold for sleep onset latency that predicts a good night's sleep",
+                    "Impact of awakenings on overall sleep quality for the individual"
+                ],
+                "behavior_impact_assessment": [
+                    "Expected improvement if sleep consistency is increased",
+                    "Predicted benefits of reducing time in bed for those with extended wake times",
+                    "Forecasted sleep efficiency changes with various interventions",
+                    "Projected recovery time after periods of severe insomnia"
+                ],
+                "long_term_predictions": [
+                    "Risk of developing chronic insomnia based on current patterns",
+                    "Expected timeline for improvement with consistent sleep practices",
+                    "Likelihood of relapse based on pattern recognition",
+                    "Long-term sleep health trajectory with and without intervention"
+                ]
             }
         }
         
@@ -1030,8 +1122,8 @@ class SleepQualityModel:
             f.write(f"# {model_card['model_name']} v{model_card['version']}\n\n")
             f.write(f"**Created:** {model_card['created_date']}\n\n")
             
-            f.write("## Purpose\n")
-            f.write(f"{model_card['purpose']}\n\n")
+            f.write("## Description\n")
+            f.write(f"{model_card['description']}\n\n")
             
             f.write("## Model Type\n")
             f.write(f"{model_card['model_type']}\n\n")
@@ -1044,6 +1136,43 @@ class SleepQualityModel:
             f.write("## Architecture\n")
             for key, value in model_card['architecture'].items():
                 f.write(f"- {key}: {value}\n")
+            f.write("\n")
+            
+            # Primary prediction targets
+            f.write("## Primary Prediction Targets\n")
+            for target, description in model_card['primary_predictions'].items():
+                f.write(f"- **{target}**: {description}\n")
+            f.write("\n")
+            
+            # Future predictions
+            f.write("## Future Predictions\n")
+            for prediction, description in model_card['future_predictions'].items():
+                f.write(f"- **{prediction}**: {description}\n")
+            f.write("\n")
+            
+            # Pattern classification
+            f.write("## Sleep Pattern Classification\n")
+            f.write("The model can detect the following sleep patterns:\n")
+            for pattern in model_card['pattern_classification']['patterns']:
+                f.write(f"- {pattern}\n")
+            f.write(f"\n**Classification method**: {model_card['pattern_classification']['classification_method']}\n\n")
+            
+            # Confidence scoring
+            f.write("## Prediction Confidence Scoring\n")
+            f.write(f"Confidence range: {model_card['confidence_scoring']['confidence_range']}\n\n")
+            f.write("Factors affecting confidence:\n")
+            for factor in model_card['confidence_scoring']['confidence_factors']:
+                f.write(f"- {factor}\n")
+            f.write("\n")
+            
+            # Demographic analysis
+            f.write("## Demographic Analysis Capabilities\n")
+            f.write("Dimensions analyzed:\n")
+            for dimension in model_card['demographic_analysis']['dimensions']:
+                f.write(f"- {dimension}\n")
+            f.write("\nAnalysis types:\n")
+            for analysis in model_card['demographic_analysis']['analysis_types']:
+                f.write(f"- {analysis}\n")
             f.write("\n")
             
             if performance_metrics:
@@ -1065,5 +1194,33 @@ class SleepQualityModel:
             f.write("## Maintenance\n")
             for key, value in model_card['maintenance'].items():
                 f.write(f"- {key}: {value}\n")
+            f.write("\n")
+            
+            # Detailed predictive capabilities
+            f.write("## Detailed Predictive Capabilities\n\n")
+            
+            f.write("### Sleep Quality Predictions\n")
+            for capability in model_card['predictive_capabilities']['sleep_quality_predictions']:
+                f.write(f"- {capability}\n")
+            f.write("\n")
+            
+            f.write("### Pattern Recognition\n")
+            for capability in model_card['predictive_capabilities']['pattern_recognition']:
+                f.write(f"- {capability}\n")
+            f.write("\n")
+            
+            f.write("### Personalized Insights\n")
+            for capability in model_card['predictive_capabilities']['personalized_insights']:
+                f.write(f"- {capability}\n")
+            f.write("\n")
+            
+            f.write("### Behavior Impact Assessment\n")
+            for capability in model_card['predictive_capabilities']['behavior_impact_assessment']:
+                f.write(f"- {capability}\n")
+            f.write("\n")
+            
+            f.write("### Long-term Predictions\n")
+            for capability in model_card['predictive_capabilities']['long_term_predictions']:
+                f.write(f"- {capability}\n")
         
         print(f"Model card saved to {filepath} and {md_filepath}")
