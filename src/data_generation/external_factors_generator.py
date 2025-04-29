@@ -1,10 +1,15 @@
+# src/data_generation/external_factors_generator.py
+
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+from src.data_generation.base_generator import BaseDataGenerator
 
-class ExternalFactorsGenerator:
-    def __init__(self):
+class ExternalFactorsGenerator(BaseDataGenerator):
+    def __init__(self, config_path='config/data_generation_config.yaml'):
         """Initialize the external factors generator"""
+        super().__init__(config_path)
+        
         # Weather patterns (temperature in Fahrenheit, humidity, pressure)
         self.weather_patterns = {
             'winter': {'temp_range': [20, 50], 'humidity_range': [30, 70], 'pressure_range': [990, 1020]},
@@ -15,20 +20,12 @@ class ExternalFactorsGenerator:
     
     def generate_weather_data(self, start_date, end_date):
         """Generate daily weather data for a time period"""
-        date_range = pd.date_range(start=start_date, end=end_date)
+        date_range = self.create_date_range(start_date, end_date)
         weather_data = []
         
         for date in date_range:
-            # Determine season (Northern Hemisphere)
-            month = date.month
-            if 3 <= month <= 5:
-                season = 'spring'
-            elif 6 <= month <= 8:
-                season = 'summer'
-            elif 9 <= month <= 11:
-                season = 'fall'
-            else:
-                season = 'winter'
+            # Determine season
+            season = self.get_season_from_date(date)
             
             # Get patterns for this season
             patterns = self.weather_patterns[season]
@@ -55,7 +52,7 @@ class ExternalFactorsGenerator:
             
             weather_data.append({
                 'date': date.strftime('%Y-%m-%d'),
-                'temperature': round(temp, 1),  # Already in Fahrenheit
+                'temperature': round(temp, 1),
                 'humidity': round(humidity, 1),
                 'pressure': round(pressure, 1),
                 'precipitation': round(precipitation, 1),
