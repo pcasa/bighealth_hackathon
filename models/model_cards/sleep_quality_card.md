@@ -1,7 +1,7 @@
 # sleep_quality Model Card
 
 **Version:** 1.0.0
-**Created:** 2025-04-27 17:22:52
+**Created:** 2025-04-29 12:58:48
 
 ## Description
 Model for sleep_quality
@@ -18,12 +18,23 @@ Model for sleep_quality
 - sleep_onset_latency_minutes
 - heart_rate_variability
 - average_heart_rate
+- profession_healthcare
+- profession_tech
+- profession_service
+- profession_education
+- profession_office
+- profession_other
+- season_Winter
+- season_Spring
+- season_Summer
+- season_Fall
+- age_normalized
 **Output:** Sleep Quality Score
 
 ## Performance Metrics
-- **final_train_loss:** 0.2059290714403001
-- **final_val_loss:** 0.46653300523757935
-- **features_used:** ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate']
+- **final_train_loss:** 0.01442918208028589
+- **final_val_loss:** 0.0009123150957748294
+- **features_used:** ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate', 'profession_healthcare', 'profession_tech', 'profession_service', 'profession_education', 'profession_office', 'profession_other', 'season_Winter', 'season_Spring', 'season_Summer', 'season_Fall', 'age_normalized']
 
 ## Limitations
 - Limited to the patterns in the training data
@@ -36,8 +47,8 @@ Model for sleep_quality
 - Provide recommendations for improved sleep
 
 ## Training Data Characteristics
-- **Number of Users:** 500
-- **Days per User:** 86
+- **Number of Users:** 100
+- **Days per User:** 55
 - **Demographics:** Simulated diverse population
 - **Sleep Patterns:**
   - Normal Sleeper Pattern

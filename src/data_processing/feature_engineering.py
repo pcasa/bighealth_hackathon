@@ -27,8 +27,9 @@ class FeatureEngineering:
         self.categorical_encoders = {}
         self.feature_columns = []
     
+    # Update the create_features method in the FeatureEngineering class
     def create_features(self, data, include_wearable=None, include_external=None):
-        """Create features for model training"""
+        """Create features for model training with improvements for handling missing features"""
         feature_data = data.copy()
         
         # Override defaults with provided parameters if given
@@ -47,6 +48,25 @@ class FeatureEngineering:
             'bedtime_consistency', 'waketime_consistency', 'duration_consistency',
         ]
         
+        # Handle demographic features
+        demographic_features = []
+        
+        # Age normalization
+        if 'age' in feature_data.columns and 'age_normalized' not in feature_data.columns:
+            feature_data['age_normalized'] = feature_data['age'] / 100.0
+            demographic_features.append('age_normalized')
+        elif 'age_normalized' in feature_data.columns:
+            demographic_features.append('age_normalized')
+        
+        # Profession one-hot encoding
+        if 'profession_category' in feature_data.columns:
+            profession_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
+            for category in profession_categories:
+                feature_name = f'profession_{category}'
+                if feature_name not in feature_data.columns:
+                    feature_data[feature_name] = (feature_data['profession_category'] == category).astype(float)
+                demographic_features.append(feature_name)
+        
         # Time features
         if self.config['include_time_features']:
             feature_data = self._add_time_features(feature_data)
@@ -56,6 +76,22 @@ class FeatureEngineering:
             ]
         else:
             time_features = []
+        
+        # Season features
+        if 'date' in feature_data.columns:
+            if 'month' not in feature_data.columns:
+                feature_data['month'] = feature_data['date'].dt.month
+            
+            if 'season' not in feature_data.columns:
+                feature_data['season'] = feature_data['month'].apply(self._get_season)
+            
+            # Add seasonal one-hot encoding
+            seasons = ['Winter', 'Spring', 'Summer', 'Fall']
+            for season in seasons:
+                feature_name = f'season_{season}'
+                if feature_name not in feature_data.columns:
+                    feature_data[feature_name] = (feature_data['season'] == season).astype(float)
+                demographic_features.append(feature_name)
         
         # Wearable features
         wearable_features = []
@@ -89,39 +125,44 @@ class FeatureEngineering:
                 external_features.extend(activity_features)
         
         # Combine all feature columns
-        feature_columns = basic_features + consistency_features + time_features + wearable_features + external_features
+        feature_columns = basic_features + consistency_features + time_features + demographic_features + wearable_features + external_features
         feature_columns = [col for col in feature_columns if col in feature_data.columns]
         
-        # Check for and handle missing columns
-        for col in feature_columns:
-            if col not in feature_data.columns:
-                feature_columns.remove(col)
+        # Handle missing features that we expect to have
+        expected_features = self.config.get('expected_features', [])
+        for col in expected_features:
+            if col not in feature_columns and col not in feature_data.columns:
+                print(f"Warning: Expected feature '{col}' is missing. Creating dummy feature.")
+                if 'normalized' in col:
+                    feature_data[col] = 0.5  # Default normalized value
+                elif col.startswith('profession_'):
+                    feature_data[col] = 0.0  # Default for one-hot encoding
+                elif col.startswith('season_'):
+                    feature_data[col] = 0.0  # Default for one-hot encoding
+                else:
+                    feature_data[col] = 0.0  # Default value
+                
+                feature_columns.append(col)
         
         # Scale numerical features
         feature_data = self._scale_features(feature_data, feature_columns)
         
-        # Add categorical features
-        categorical_method = self.config['categorical_encoding']
-        if categorical_method == 'one-hot':
-            if 'sleep_pattern' in feature_data.columns:
-                feature_data = self._encode_categorical(feature_data, 'sleep_pattern')
-                cat_cols = [col for col in feature_data.columns if col.startswith('sleep_pattern_')]
-                feature_columns.extend(cat_cols)
-            
-            if 'device_type' in feature_data.columns:
-                feature_data = self._encode_categorical(feature_data, 'device_type')
-                cat_cols = [col for col in feature_data.columns if col.startswith('device_type_')]
-                feature_columns.extend(cat_cols)
+        # Handle NaN values
+        for col in feature_columns:
+            if feature_data[col].isna().any():
+                print(f"Filling {feature_data[col].isna().sum()} NaN values in column {col}")
+                if feature_data[col].dtype == float or feature_data[col].dtype == int:
+                    feature_data[col] = feature_data[col].fillna(0.0)
+                else:
+                    feature_data[col] = feature_data[col].fillna(feature_data[col].mode().iloc[0] if not feature_data[col].mode().empty else "unknown")
         
         # Store feature columns for later use
         self.feature_columns = feature_columns
         
         # Separate targets from features
-        
         targets_df = pd.DataFrame()
-    
+        
         # Check if we have the necessary columns for targets
-        required_columns = ['sleep_efficiency']
         id_columns = []
         
         # Check which ID columns are available
@@ -146,9 +187,22 @@ class FeatureEngineering:
             
             # Remove target columns from features
             feature_data = feature_data.drop(['sleep_efficiency'], axis=1, errors='ignore')
-            
         
         return feature_data, targets_df
+
+    def _get_season(self, month):
+        """Determine season from month (Northern Hemisphere)"""
+        if isinstance(month, pd.Series):
+            return month.apply(self._get_season)
+        
+        if month in [12, 1, 2]:
+            return 'Winter'
+        elif month in [3, 4, 5]:
+            return 'Spring'
+        elif month in [6, 7, 8]:
+            return 'Summer'
+        else:  # 9, 10, 11
+            return 'Fall'
     
     def _add_time_features(self, data):
         """Add cyclical time features"""

@@ -1,16 +1,19 @@
 import numpy as np
 import pandas as pd
-import yaml
-import os
-import json
 from datetime import datetime, timedelta, time
-from src.utils.constants import profession_categories
 
-class SleepDataGenerator:
+from src.data_generation.base_generator import BaseDataGenerator
+
+class SleepDataGenerator(BaseDataGenerator):
+    """
+    Sleep data generator that inherits from the BaseDataGenerator.
+    Generates synthetic sleep data for users based on their profile and sleep pattern.
+    """
     def __init__(self, config_path='config/data_generation_config.yaml'):
-        with open(config_path, 'r') as file:
-            self.config = yaml.safe_load(file)
+        # Initialize the base generator
+        super().__init__(config_path)
         
+        # Store specific settings for sleep data generation
         self.sleep_patterns = self.config['sleep_patterns']
         self.time_settings = self.config['time_settings']
         
@@ -24,28 +27,19 @@ class SleepDataGenerator:
         all_sleep_data = []
         
         for _, user in users_df.iterrows():
-            # Determine profession category for this user
-            user_profession_category = None
-            for category, keywords in profession_categories.items():
-                if any(keyword.lower() in user['profession'].lower() for keyword in keywords):
-                    user_profession_category = category
-                    break
+            # Determine profession category for this user using the base class method
+            user_profession_category = self.get_category_from_keywords(
+                user['profession'], 
+                {'healthcare': ['doctor', 'nurse', 'medical', 'healthcare', 'hospital'],
+                 'tech': ['engineer', 'developer', 'programmer', 'IT', 'tech'],
+                 'service': ['retail', 'server', 'customer', 'service', 'hospitality'],
+                 'education': ['teacher', 'professor', 'educator', 'tutor', 'school'],
+                 'industrial': ['factory', 'plant', 'construction', 'manufacturing', 'worker'],
+                 'office': ['clerk', 'manager', 'administrative', 'office', 'executive']}
+            )
             
-            # Extract region components (simplistic approach for demo)
-            region_parts = user['region'].split(', ')
-            country = region_parts[-1] if len(region_parts) >= 3 else None
-            
-            # Determine region category
-            user_region_category = None
-            if country:
-                if country in ['United States', 'Canada', 'Mexico']:
-                    user_region_category = 'north_america'
-                elif country in ['United Kingdom', 'France', 'Germany', 'Italy', 'Spain']:
-                    user_region_category = 'europe'
-                elif country in ['China', 'Japan', 'India', 'Korea', 'Thailand']:
-                    user_region_category = 'asia'
-                else:
-                    user_region_category = 'other'
+            # Extract region category using the base class method
+            user_region_category = self.extract_region_category(user['region'])
             
             # Generate sleep data with these additional factors
             user_sleep_data = self._generate_user_sleep_data(
@@ -66,29 +60,17 @@ class SleepDataGenerator:
         pattern = user['sleep_pattern']
         pattern_params = self.sleep_patterns[pattern].copy()  # Make a copy to avoid modifying the original
         
-        # Apply profession-specific modifiers if available
+        # Apply profession-specific modifiers using the base class method
         if profession_category and 'profession_modifiers' in pattern_params:
             if profession_category in pattern_params['profession_modifiers']:
                 modifiers = pattern_params['profession_modifiers'][profession_category]
-                for key, value in modifiers.items():
-                    if isinstance(value, list):
-                        # For list parameters like ranges
-                        pattern_params[key] = value
-                    else:
-                        # For numeric adjustments
-                        if key in pattern_params and isinstance(pattern_params[key], list) and len(pattern_params[key]) == 2:
-                            # Adjust range values
-                            pattern_params[key] = [val + value for val in pattern_params[key]]
-                        elif key in pattern_params:
-                            # Direct replacement
-                            pattern_params[key] = value
+                pattern_params = self.apply_modifiers(pattern_params, modifiers)
         
-        # Apply region-specific modifiers if available
+        # Apply region-specific modifiers using the base class method
         if region_category and 'region_modifiers' in pattern_params:
             if region_category in pattern_params['region_modifiers']:
                 modifiers = pattern_params['region_modifiers'][region_category]
-                for key, value in modifiers.items():
-                    pattern_params[key] = value
+                pattern_params = self.apply_modifiers(pattern_params, modifiers)
         
         # Set base bedtime and wake time based on pattern, profession, and region
         if pattern == 'shift_worker':
@@ -278,6 +260,9 @@ class SleepDataGenerator:
             
         subjective_rating = np.random.randint(rating_min, rating_max + 1)
         
+        # Get season using the base class method
+        season = self.get_season_from_date(date)
+        
         # Create complete sleep record
         return {
             'user_id': user['user_id'],
@@ -295,5 +280,6 @@ class SleepDataGenerator:
             'subjective_rating': subjective_rating,
             'is_weekend': is_weekend,
             'profession_category': profession_category,
-            'region_category': region_category
+            'region_category': region_category,
+            'season': season
         }

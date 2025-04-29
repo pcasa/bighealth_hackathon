@@ -26,6 +26,10 @@ from src.data_generation.wearable_data_generator import WearableDataGenerator
 from src.data_processing.preprocessing import Preprocessor
 from src.models.recommendation_engine import SleepRecommendationEngine
 from src.models.sleep_quality import SleepQualityModel
+from src.data_generation.base_generator import BaseDataGenerator
+from src.data_generation.sleep_data_generator import SleepDataGenerator
+from src.data_generation.wearable_data_generator import WearableDataGenerator
+
 
 def load_config(config_path='config/data_generation_config.yaml'):
     """Load configuration from YAML file"""
@@ -77,7 +81,7 @@ def generate_enhanced_sleep_data(users_df, config, seed=42):
     np.random.seed(seed)
     
     # Initialize sleep data generator
-    sleep_data_generator = SleepDataGenerator(config_path='config/data_generation_config.yaml')
+    sleep_data_generator = SleepDataGenerator()
     
     all_sleep_data = []
     
@@ -185,6 +189,16 @@ def generate_visualizations(users_df, sleep_data_df, output_dir):
     # Set plot style
     plt.style.use('seaborn-v0_8-whitegrid')
     sns.set_palette("viridis")
+
+    # Check if 'created_at' exists, add it if missing
+    if 'created_at' not in users_df.columns:
+        print("Warning: 'created_at' field missing, generating placeholder values")
+        # Generate placeholders for created_at
+        start_date = datetime(2024, 1, 1)
+        days = np.random.randint(0, 120, size=len(users_df))
+        users_df['created_at'] = [start_date + timedelta(days=d) for d in days]
+        users_df['created_at'] = users_df['created_at'].apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S'))
+    
     
     # 1. User creation timeline
     plt.figure(figsize=(12, 6))
@@ -263,25 +277,29 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
     os.makedirs(os.path.join(output_dir, 'data'), exist_ok=True)
     os.makedirs(os.path.join(output_dir, 'visualizations'), exist_ok=True)
     os.makedirs(os.path.join(output_dir, 'recommendations'), exist_ok=True)
+
+    # Set random seed for reproducibility
+    np.random.seed(seed)
     
-    # Step 1: Create users distributed throughout the year
-    print("\nCreating users distributed throughout the year...")
-    users_df = create_enhanced_demo_users(config, count=user_count, seed=seed)
+    # Step 1: Generate users distributed throughout the year
+    # Import the function from data_generation_script
+    from data_generation_script import generate_user_profiles
+    users_df = generate_user_profiles(user_count, config_path='config/data_generation_config.yaml')
     users_df.to_csv(os.path.join(output_dir, 'data', 'users.csv'), index=False)
     
     # Step 2: Generate sleep data for each user from creation date
-    print("\nGenerating sleep data for each user from their creation date...")
-    sleep_data_df = generate_enhanced_sleep_data(users_df, config, seed=seed)
+    # Import the function from data_generation_script
+    from data_generation_script import SleepDataGenerator
+    sleep_data_gen = SleepDataGenerator(config_path='config/data_generation_config.yaml')
+    sleep_data_df = sleep_data_gen.generate_sleep_data(users_df)
     sleep_data_df.to_csv(os.path.join(output_dir, 'data', 'sleep_data.csv'), index=False)
     
     # Step 3: Generate wearable data for a percentage of users
     print(f"\nGenerating wearable data for {wearable_percentage}% of users...")
-    wearable_data_df = generate_enhanced_wearable_data(
-        sleep_data_df, 
-        users_df, 
-        wearable_percentage=wearable_percentage,
-        seed=seed
-    )
+    from data_generation_script import WearableDataGenerator
+    wearable_gen = WearableDataGenerator(config_path='config/data_generation_config.yaml', 
+                                       device_config_path='config/device_profiles.yaml')
+    wearable_data_df = wearable_gen.generate_wearable_data(sleep_data_df, users_df)
     wearable_data_df.to_csv(os.path.join(output_dir, 'data', 'wearable_data.csv'), index=False)
     
     # Step 4: Analyze dataset

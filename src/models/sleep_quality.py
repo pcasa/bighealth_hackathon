@@ -247,14 +247,56 @@ class SleepQualityModel:
             # Create dummy columns for missing features
             for missing_feature in missing:
                 print(f"Creating dummy column for missing feature: {missing_feature}")
-                data[missing_feature] = 0.0
+                if 'normalized' in missing_feature:
+                    # For normalized features, use appropriate scaling
+                    if missing_feature == 'age_normalized' and 'age' in data.columns:
+                        data[missing_feature] = data['age'] / 100.0
+                    else:
+                        data[missing_feature] = 0.5  # Default to mid-range
+                elif 'profession_' in missing_feature:
+                    # For profession one-hot features
+                    data[missing_feature] = 0.0
+                elif 'season_' in missing_feature:
+                    # For season one-hot features
+                    if missing_feature == 'season_Winter' and 'month' in data.columns:
+                        data[missing_feature] = data['month'].apply(lambda m: 1.0 if m in [12, 1, 2] else 0.0)
+                    elif missing_feature == 'season_Spring' and 'month' in data.columns:
+                        data[missing_feature] = data['month'].apply(lambda m: 1.0 if m in [3, 4, 5] else 0.0)
+                    elif missing_feature == 'season_Summer' and 'month' in data.columns:
+                        data[missing_feature] = data['month'].apply(lambda m: 1.0 if m in [6, 7, 8] else 0.0)
+                    elif missing_feature == 'season_Fall' and 'month' in data.columns:
+                        data[missing_feature] = data['month'].apply(lambda m: 1.0 if m in [9, 10, 11] else 0.0)
+                    else:
+                        data[missing_feature] = 0.0
+                else:
+                    data[missing_feature] = 0.0  # Default value
+                    
                 available_features.append(missing_feature)
         
         # Store feature columns
         self.feature_columns = available_features
         
+        # Fill NaN values - CRITICAL FIX
+        for col in available_features:
+            if data[col].isna().any():
+                print(f"Filling NaN values in column {col}")
+                if data[col].dtype == float or data[col].dtype == int:
+                    data[col] = data[col].fillna(0.0)
+                else:
+                    # For non-numeric columns, fill with most common value
+                    data[col] = data[col].fillna(data[col].mode().iloc[0] if not data[col].mode().empty else "unknown")
+        
         # Extract features and target
         X = data[available_features].values
+        
+        # Ensure sleep_efficiency exists and has no NaN values
+        if 'sleep_efficiency' not in data.columns:
+            raise ValueError("Target column 'sleep_efficiency' missing from data")
+        
+        if data['sleep_efficiency'].isna().any():
+            print("WARNING: NaN values found in target column 'sleep_efficiency'. Filling with mean.")
+            data['sleep_efficiency'] = data['sleep_efficiency'].fillna(data['sleep_efficiency'].mean())
+        
         y = data['sleep_efficiency'].values
         
         # Create a simple fully connected network instead of LSTM
@@ -297,13 +339,32 @@ class SleepQualityModel:
         X_val = torch.FloatTensor(X[val_indices]).to(self.device)
         y_val = torch.FloatTensor(y[val_indices]).view(-1, 1).to(self.device)
         
+        # Check for NaN values in tensors - CRITICAL FIX
+        if torch.isnan(X_train).any():
+            print("WARNING: NaN values detected in X_train. Replacing with zeros.")
+            X_train = torch.nan_to_num(X_train, nan=0.0)
+        
+        if torch.isnan(y_train).any():
+            print("WARNING: NaN values detected in y_train. Replacing with mean.")
+            y_mean = torch.mean(y_train[~torch.isnan(y_train)])
+            y_train = torch.nan_to_num(y_train, nan=y_mean.item())
+        
+        if torch.isnan(X_val).any():
+            print("WARNING: NaN values detected in X_val. Replacing with zeros.")
+            X_val = torch.nan_to_num(X_val, nan=0.0)
+        
+        if torch.isnan(y_val).any():
+            print("WARNING: NaN values detected in y_val. Replacing with mean.")
+            y_mean = torch.mean(y_val[~torch.isnan(y_val)])
+            y_val = torch.nan_to_num(y_val, nan=y_mean.item())
+        
         # Training parameters
         criterion = nn.MSELoss()
         optimizer = optim.Adam(self.model.parameters(), lr=self.config['hyperparameters']['learning_rate'])
         batch_size = min(self.config['hyperparameters']['batch_size'], len(X_train))
         num_epochs = self.config['hyperparameters']['epochs']
         
-        # Training loop
+        # Training loop with gradient clipping - CRITICAL FIX
         train_losses = []
         val_losses = []
         
@@ -322,9 +383,18 @@ class SleepQualityModel:
                 outputs = self.model(X_batch)
                 loss = criterion(outputs, y_batch)
                 
+                # Check for NaN loss
+                if torch.isnan(loss):
+                    print(f"WARNING: NaN loss detected at epoch {epoch+1}, batch {i//batch_size}. Skipping update.")
+                    continue
+                
                 # Backward and optimize
                 optimizer.zero_grad()
                 loss.backward()
+                
+                # Gradient clipping - CRITICAL FIX
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                
                 optimizer.step()
                 
                 train_loss += loss.item()
@@ -349,7 +419,7 @@ class SleepQualityModel:
             'val_losses': val_losses,
             'features': available_features
         }
-    
+
     def train(self, train_data, val_data=None, sequence_length=7):
         """Train the sleep quality model"""
         # Preprocess data

@@ -87,6 +87,17 @@ class Preprocessor:
         
         return processed_data
     
+    def _get_season(self, month):
+        """Determine season from month (Northern Hemisphere)"""
+        if month in [12, 1, 2]:
+            return 'Winter'
+        elif month in [3, 4, 5]:
+            return 'Spring' 
+        elif month in [6, 7, 8]:
+            return 'Summer'
+        else:  # 9, 10, 11
+            return 'Fall'
+    
     def preprocess_sleep_data(self, sleep_data, wearable_data=None, external_data=None):
         """Preprocess and merge sleep data with wearable and external data"""
         # IMPORTANT: Make a copy of sleep_data to avoid modifying the original
@@ -105,6 +116,43 @@ class Preprocessor:
         
         # Add calculated sleep features
         processed_data = self._add_sleep_features(processed_data)
+
+        # Add age_normalized if 'age' is present but age_normalized is missing
+        if 'age' in processed_data.columns and 'age_normalized' not in processed_data.columns:
+            processed_data['age_normalized'] = processed_data['age'] / 100.0
+        
+        # Add profession features if missing
+        if 'profession' in processed_data.columns and 'profession_category' not in processed_data.columns:
+            from src.utils.constants import profession_categories
+            
+            processed_data['profession_category'] = processed_data['profession'].apply(
+                lambda x: next((cat for cat, keywords in profession_categories.items() 
+                            if any(kw.lower() in x.lower() for kw in keywords)), 'other')
+            )
+            
+            # Add profession one-hot encoding
+            prof_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
+            for category in prof_categories:
+                col_name = f'profession_{category}'
+                if col_name not in processed_data.columns:
+                    processed_data[col_name] = (processed_data['profession_category'] == category).astype(float)
+
+        # Add season features if missing
+        if 'date' in processed_data.columns:
+            # Extract month
+            processed_data['month'] = processed_data['date'].dt.month
+            
+            # Add season
+            if 'season' not in processed_data.columns:
+                processed_data['season'] = processed_data['month'].apply(self._get_season)
+            
+            # Add seasonal one-hot encoding
+            seasons = ['Winter', 'Spring', 'Summer', 'Fall']
+            for season in seasons:
+                col_name = f'season_{season}'
+                if col_name not in processed_data.columns:
+                    processed_data[col_name] = (processed_data['season'] == season).astype(float)
+        
 
 
         # Merge with wearable data if provided

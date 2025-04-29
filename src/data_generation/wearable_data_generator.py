@@ -1,14 +1,20 @@
 import numpy as np
 import pandas as pd
-import yaml
-import os
 from datetime import datetime, timedelta
+import yaml
 
-class WearableDataGenerator:
+from src.data_generation.base_generator import BaseDataGenerator
+
+class WearableDataGenerator(BaseDataGenerator):
+    """
+    Wearable data generator that inherits from the BaseDataGenerator.
+    Generates synthetic wearable device data based on sleep patterns and device specifications.
+    """
     def __init__(self, config_path='config/data_generation_config.yaml', device_config_path='config/device_profiles.yaml'):
-        with open(config_path, 'r') as file:
-            self.config = yaml.safe_load(file)
+        # Initialize the base generator
+        super().__init__(config_path)
         
+        # Load device-specific configuration
         with open(device_config_path, 'r') as file:
             self.device_config = yaml.safe_load(file)
         
@@ -38,10 +44,15 @@ class WearableDataGenerator:
         sleep_onset = datetime.strptime(record['sleep_onset_time'], '%Y-%m-%d %H:%M:%S')
         wake_time = datetime.strptime(record['wake_time'], '%Y-%m-%d %H:%M:%S')
         
-        # Add device measurement variance
-        bedtime_variance = int(np.random.normal(0, 5))  # 5 minute standard deviation
-        sleep_onset_variance = int(np.random.normal(0, 10))  # 10 minute standard deviation
-        wake_time_variance = int(np.random.normal(0, 5))  # 5 minute standard deviation
+        # Add device measurement variance with the base class noise generation
+        bedtime_variance_minutes = self.generate_time_based_noise(0, 0.5)  # ~5 minutes standard deviation
+        sleep_onset_variance_minutes = self.generate_time_based_noise(0, 1.0)  # ~10 minutes standard deviation
+        wake_time_variance_minutes = self.generate_time_based_noise(0, 0.5)  # ~5 minutes standard deviation
+        
+        # Convert to integer minutes
+        bedtime_variance = int(bedtime_variance_minutes)
+        sleep_onset_variance = int(sleep_onset_variance_minutes)
+        wake_time_variance = int(wake_time_variance_minutes)
         
         device_bedtime = bedtime + timedelta(minutes=bedtime_variance)
         device_sleep_onset = sleep_onset + timedelta(minutes=sleep_onset_variance)
@@ -49,7 +60,8 @@ class WearableDataGenerator:
         
         # Generate sleep stages data
         sleep_stages = self._generate_sleep_stages(
-            device_type, device_sleep_onset, device_wake_time, record['sleep_duration_hours']
+            device_type, device_sleep_onset, device_wake_time, record['sleep_duration_hours'], 
+            record.get('profession_category', None)  # Pass profession if available
         )
         
         # Generate heart rate data
@@ -72,6 +84,16 @@ class WearableDataGenerator:
         if 'blood_oxygen' in device_profile['data_fields']:
             blood_oxygen = self._generate_blood_oxygen(record['sleep_efficiency'])
         
+        # Get season using base class method (if date available)
+        season = None
+        if 'date' in record:
+            try:
+                date_obj = datetime.strptime(record['date'], '%Y-%m-%d')
+                season = self.get_season_from_date(date_obj)
+            except (ValueError, TypeError):
+                # If date parsing fails, leave season as None
+                pass
+        
         return {
             'user_id': record['user_id'],
             'date': record['date'],
@@ -93,11 +115,14 @@ class WearableDataGenerator:
             'blood_oxygen': blood_oxygen,
             'heart_rate_data': heart_rate_data,
             'movement_data': movement_data,
-            'sleep_stage_data': sleep_stages['sequence']
+            'sleep_stage_data': sleep_stages['sequence'],
+            'season': season,
+            'profession_category': record.get('profession_category', None),
+            'region_category': record.get('region_category', None)
         }
     
-    def _generate_sleep_stages(self, device_type, sleep_onset, wake_time, sleep_duration):
-        """Generate sleep stage percentages and sequence"""
+    def _generate_sleep_stages(self, device_type, sleep_onset, wake_time, sleep_duration, profession=None):
+        """Generate sleep stage percentages and sequence with profession-specific adjustments"""
         # Base percentages for a normal sleeper
         base_deep = 0.20
         base_light = 0.50
@@ -123,10 +148,23 @@ class WearableDataGenerator:
             light_adj = 0.0
             awake_adj = 0.0
         
-        # Add random variance
-        deep = base_deep + deep_adj + np.random.normal(0, 0.03)
-        rem = base_rem + rem_adj + np.random.normal(0, 0.03)
-        awake = base_awake + awake_adj + np.random.normal(0, 0.01)
+        # Apply profession-specific adjustments
+        if profession == 'healthcare':
+            # Healthcare workers often have disrupted sleep architecture
+            deep_adj -= 0.03
+            awake_adj += 0.03
+        elif profession == 'tech':
+            # Tech workers often have screen time close to bedtime, affecting REM
+            rem_adj -= 0.02
+        elif profession == 'shift_worker':
+            # Shift workers have generally lower sleep quality
+            deep_adj -= 0.04
+            awake_adj += 0.04
+        
+        # Add random variance using the base generator's noise function
+        deep = base_deep + deep_adj + self.generate_time_based_noise(0, 0.03)
+        rem = base_rem + rem_adj + self.generate_time_based_noise(0, 0.03)
+        awake = base_awake + awake_adj + self.generate_time_based_noise(0, 0.01)
         
         # Ensure light makes up the remainder
         light = 1.0 - deep - rem - awake
@@ -238,7 +276,7 @@ class WearableDataGenerator:
         return stages
     
     def _generate_heart_rate_data(self, device_type, device_profile, bedtime, wake_time, sleep_efficiency, awakenings):
-        """Generate heart rate data for the sleep period"""
+        """Generate heart rate data for the sleep period using base class noise generation"""
         # Ensure bedtime is before wake_time
         if bedtime >= wake_time:
             # Handle error case - generate a minimal valid dataset
@@ -278,8 +316,8 @@ class WearableDataGenerator:
                 # More REM in later cycles, heart rate increases
                 hr = base_hr + np.sin(time_fraction * 15) * 4
             
-            # Add noise
-            hr += np.random.normal(0, variability)
+            # Add noise using the base generator method
+            hr += self.generate_time_based_noise(0, variability/10)  # scale appropriately
             
             # Add spikes for awakenings (with safe probability)
             spike_probability = min(0.95, (awakenings / max(1, num_samples)) * 3)  # Cap at 0.95
@@ -326,8 +364,8 @@ class WearableDataGenerator:
                 # Normal low sleep movement
                 movement = base_movement
             
-            # Add noise based on device sensitivity
-            movement += np.random.normal(0, noise_factor)
+            # Add noise using base generator method
+            movement += self.generate_time_based_noise(0, noise_factor)
             
             # Apply device sensitivity
             movement *= sensitivity
@@ -348,8 +386,8 @@ class WearableDataGenerator:
         # Adjust based on sleep efficiency - generally higher HRV is better
         base_hrv = rmssd * (0.8 + sleep_efficiency * 0.4)
         
-        # Add device-specific variance
-        hrv = base_hrv * (0.9 + np.random.random() * 0.2)
+        # Add device-specific variance using base generator method
+        hrv = base_hrv * (0.9 + self.generate_time_based_noise(0.1, 0.05))
         
         return round(hrv, 1)
     
@@ -366,8 +404,8 @@ class WearableDataGenerator:
         else:
             variability = 0.8
         
-        # Add noise
-        spo2 = base_spo2 + np.random.normal(0, variability)
+        # Add noise using base generator method
+        spo2 = base_spo2 + self.generate_time_based_noise(0, variability/3)
         
         # Ensure valid range
         spo2 = max(90, min(spo2, 100))

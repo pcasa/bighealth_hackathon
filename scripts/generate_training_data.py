@@ -22,6 +22,9 @@ from src.data_generation.user_generator import UserGenerator
 from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
 from src.data_generation.external_factors_generator import ExternalFactorsGenerator
+from src.data_generation.sleep_data_generator import SleepDataGenerator
+from src.data_generation.wearable_data_generator import WearableDataGenerator
+
 
 # Set up logging
 logging.basicConfig(
@@ -117,8 +120,10 @@ def main():
     
     # Initialize generators
     user_generator = UserGenerator(config_path=args.config)
-    sleep_data_generator = SleepDataGenerator(config_path=args.config)
-    wearable_data_generator = WearableDataGenerator(config_path=args.config)
+    sleep_data_generator = SleepDataGenerator(config_path='config/data_generation_config.yaml')
+    wearable_data_generator = WearableDataGenerator(config_path='config/data_generation_config.yaml', 
+                                          device_config_path='config/device_profiles.yaml')
+
     external_factors_generator = ExternalFactorsGenerator()
     
     # Generate user profiles
