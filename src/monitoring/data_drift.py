@@ -11,7 +11,7 @@ from sklearn.ensemble import IsolationForest
 import torch
 
 class DataDriftDetector:
-    def __init__(self, config_path='config/model_config.yaml'):
+    def __init__(self, config_path='src/config/model_config.yaml'):
         """Initialize the data drift detector"""
         # Load configuration
         with open(config_path, 'r') as file:

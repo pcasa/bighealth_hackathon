@@ -6,7 +6,11 @@ import random
 from datetime import datetime, timedelta
 import json
 import os
+from typing import Dict, List, Optional, Union
+
 from src.utils.constants import profession_categories
+from src.core.models.data_models import ProgressAnalysis, SleepMetrics, Recommendation
+
 
 class SleepRecommendationEngine:
     def __init__(self, config_path='config/recommendations_config.yaml'):
@@ -105,33 +109,33 @@ class SleepRecommendationEngine:
             trend = 'stable'
             
         # Key metrics to reference in recommendations
-        key_metrics = {
-            'avg_efficiency': np.mean(sleep_efficiency),
-            'avg_time_in_bed': np.mean(time_in_bed),
-            'recent_efficiency': sleep_efficiency[-1] if len(sleep_efficiency) > 0 else None,
-            'recent_time_in_bed': time_in_bed[-1] if len(time_in_bed) > 0 else None,
-            'best_efficiency': np.max(sleep_efficiency) if len(sleep_efficiency) > 0 else None,
-            'avg_awakenings': np.mean(awakenings) if awakenings is not None else None,
-            'avg_time_awake': np.mean(time_awake) if time_awake is not None else None,
-            'recent_rating': ratings[-1] if ratings is not None and len(ratings) > 0 else None,
-            'consistent_bedtime': self._check_bedtime_consistency(has_sleep_data)
-        }
+        key_metrics = SleepMetrics(
+            avg_efficiency=np.mean(sleep_efficiency),
+            avg_time_in_bed=np.mean(time_in_bed),
+            recent_efficiency=sleep_efficiency[-1] if len(sleep_efficiency) > 0 else None,
+            recent_time_in_bed=time_in_bed[-1] if len(time_in_bed) > 0 else None,
+            best_efficiency=np.max(sleep_efficiency) if len(sleep_efficiency) > 0 else None,
+            avg_awakenings=np.mean(awakenings) if awakenings is not None else None,
+            avg_time_awake=np.mean(time_awake) if time_awake is not None else None,
+            recent_rating=ratings[-1] if ratings is not None and len(ratings) > 0 else None,
+            consistent_bedtime=self._check_bedtime_consistency(has_sleep_data)
+        )
         
         # Check for no-sleep occurrences
         no_sleep_count = len(recent_data) - len(has_sleep_data)
         if no_sleep_count > 0:
-            key_metrics['no_sleep_count'] = no_sleep_count
+            key_metrics.no_sleep_count = no_sleep_count
             if no_sleep_count >= 3:
                 trend = 'severe_insomnia'
             elif no_sleep_count >= 2:
                 trend = 'moderate_insomnia'
         
-        return {
-            'trend': trend,
-            'consistency': consistency,
-            'improvement_rate': efficiency_trend,
-            'key_metrics': key_metrics
-        }
+        return ProgressAnalysis(
+            trend=trend,
+            consistency=consistency,
+            improvement_rate=efficiency_trend,
+            key_metrics=key_metrics
+        )
     
     def _calculate_sleep_efficiency(self, sleep_data):
         """Calculate sleep efficiency from available metrics"""
@@ -227,6 +231,10 @@ class SleepRecommendationEngine:
         # Adjust for consistency
         if consistency < 0.7 and trend not in ['insufficient_data', 'severe_insomnia', 'moderate_insomnia']:
             category = 'consistency_reminder'
+
+        # Get appropriate message category
+        if trend == 'insufficient_data':
+            category = 'onboarding'
         
         # Get previously sent messages for this user
         user_history = self.user_message_history.get(user_id, [])
@@ -263,13 +271,15 @@ class SleepRecommendationEngine:
         self._update_user_history(user_id, category, template)
         
         # Calculate confidence for this recommendation
+        # Calculate confidence
         confidence = self.calculate_recommendation_confidence(user_id, progress_data)
         
-        return {
-            "message": message,
-            "confidence": confidence,
-            "category": category
-        }
+        return Recommendation(
+            message=message,
+            confidence=confidence,
+            category=category
+        )
+    
 
     def _get_eligible_templates(self, category, user_history, recency=7):
         """Get templates that haven't been used recently"""

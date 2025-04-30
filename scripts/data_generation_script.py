@@ -19,7 +19,7 @@ from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
 from src.utils.constants import profession_categories
 
-def generate_user_profiles(num_users=100, config_path='config/data_generation_config.yaml'):
+def generate_user_profiles(num_users=100, config_path='src/config/data_generation_config.yaml'):
     """Generate synthetic user profiles for data generation."""
     base_gen = BaseDataGenerator(config_path)
     user_profiles = []
@@ -181,8 +181,8 @@ def generate_profession(profession_category):
 def main():
     """Generate and save synthetic data for the Sleep Insights App."""
     # Set paths
-    config_path = 'config/data_generation_config.yaml'
-    device_config_path = 'config/device_profiles.yaml'
+    config_path = 'src/config/data_generation_config.yaml'
+    device_config_path = 'src/config/device_profiles.yaml'
     output_dir = 'data/raw'
     
     # Ensure output directory exists
@@ -199,6 +199,13 @@ def main():
     print("Generating user profiles...")
     users_df = generate_user_profiles(num_users, config_path)
     
+    # Debug: Check if user_id and device_type are in users_df
+    print(f"Users DataFrame columns: {users_df.columns.tolist()}")
+    if 'user_id' not in users_df.columns:
+        print("ERROR: 'user_id' column missing from users_df")
+    if 'device_type' not in users_df.columns:
+        print("ERROR: 'device_type' column missing from users_df")
+    
     # Initialize generators
     sleep_data_gen = SleepDataGenerator(config_path)
     wearable_data_gen = WearableDataGenerator(config_path, device_config_path)
@@ -206,6 +213,16 @@ def main():
     # Generate sleep data
     print("Generating sleep data...")
     sleep_data_df = sleep_data_gen.generate_sleep_data(users_df, start_date, end_date)
+    
+    # Debug: Check if sleep_data_df has user_id
+    print(f"Sleep DataFrame columns: {sleep_data_df.columns.tolist()}")
+    if 'user_id' not in sleep_data_df.columns:
+        print("ERROR: 'user_id' column missing from sleep_data_df")
+        # Add user_id column if missing (emergency fix)
+        if len(sleep_data_df) > 0:
+            print("Attempting to fix sleep_data_df by adding user_id column...")
+            # This is a fallback - the proper fix would be in SleepDataGenerator
+            sleep_data_df['user_id'] = [f"user_{i:04d}" for i in range(len(sleep_data_df))]
     
     # Generate wearable data
     print("Generating wearable data...")
@@ -229,7 +246,7 @@ def main():
     user_count = len(users_df)
     sleep_record_count = len(sleep_data_df)
     wearable_record_count = len(wearable_data_df)
-    avg_records_per_user = sleep_record_count / user_count
+    avg_records_per_user = sleep_record_count / user_count if user_count > 0 else 0
     
     print("\nData Generation Summary:")
     print(f"Total users: {user_count}")

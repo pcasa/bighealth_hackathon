@@ -2,7 +2,11 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from pydantic import ValidationError
+
+from src.core.models.data_models import SleepEntry, WearableData, UserProfile
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
+from src.utils.ensure_valid_numeric_fields import ensure_valid_numeric_fields
 
 
 # Set up logging
@@ -153,7 +157,40 @@ class Preprocessor:
                 if col_name not in processed_data.columns:
                     processed_data[col_name] = (processed_data['season'] == season).astype(float)
         
-
+        # Validate and normalize sleep entries
+        validated_entries = []
+        for _, row in processed_data.iterrows():
+            try:
+                # Create a dictionary from the row
+                entry_dict = row.to_dict()
+                
+                # Validate using the SleepEntry model
+                entry = SleepEntry(**entry_dict)
+                
+                # Add to validated entries
+                validated_entries.append(entry.dict())
+            except ValidationError as e:
+                logging.warning(f"Invalid sleep entry: {e}")
+                # Either skip or attempt to fix
+                # Option 1: Skip invalid entries
+                # continue
+                
+                # Option 2: Attempt to fix by removing validation errors
+                try:
+                    # Filter out fields that caused validation errors
+                    error_fields = [err['loc'][0] for err in e.errors()]
+                    fixed_dict = {k: v for k, v in entry_dict.items() if k not in error_fields}
+                    
+                    # Try to create a valid entry with remaining fields
+                    entry = SleepEntry(**fixed_dict)
+                    validated_entries.append(entry.dict())
+                except ValidationError:
+                    # If still invalid, skip this entry
+                    continue
+        
+        # Create a new DataFrame from validated entries
+        if validated_entries:
+            processed_data = pd.DataFrame(validated_entries)
 
         # Merge with wearable data if provided
         if wearable_data is not None:
@@ -168,9 +205,28 @@ class Preprocessor:
                 if 'device_wake_time' in wearable_data.columns:
                     wearable_data['device_wake_time'] = pd.to_datetime(wearable_data['device_wake_time'])
             
+            validated_wearable = []
+            for _, row in wearable_data.iterrows():
+                try:
+                    # Create a dictionary from the row
+                    wearable_dict = row.to_dict()
+                    
+                    # Validate using the WearableData model
+                    wearable = WearableData(**wearable_dict)
+                    
+                    # Add to validated entries
+                    validated_wearable.append(wearable.model_dump())
+                except ValidationError as e:
+                    logging.warning(f"Invalid wearable data: {e}")
+                    continue
+            
+            if validated_wearable:
+                # Create a new DataFrame from validated wearable data
+                wearable_df = pd.DataFrame(validated_wearable)
+
             # Columns to drop from wearable data
             columns_to_drop = self.config.get('wearable_drop_columns', 
-                                            ['heart_rate_data', 'movement_data', 'sleep_stage_data'])
+                                            ['movement_data', 'sleep_stage_data'])
             
             # Drop specified columns if they exist
             wearable_cols_to_drop = [col for col in columns_to_drop if col in wearable_data.columns]
@@ -256,6 +312,7 @@ class Preprocessor:
         if missing_columns:
             print(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
         
+        processed_data = ensure_valid_numeric_fields(processed_data)
         return processed_data
     
     def transform_wearable_data(self, wearable_data):

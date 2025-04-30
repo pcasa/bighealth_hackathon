@@ -24,14 +24,14 @@ from src.data_generation.user_generator import UserGenerator
 from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
 from src.core.data_processing.preprocessing import Preprocessor
-from src.core.models.recommendation_engine import SleepRecommendationEngine
+from core.recommendation.recommendation_engine import SleepRecommendationEngine
 from src.core.models.sleep_quality import SleepQualityModel
 from src.data_generation.base_generator import BaseDataGenerator
 from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
 
 
-def load_config(config_path='config/data_generation_config.yaml'):
+def load_config(config_path='src/config/data_generation_config.yaml'):
     """Load configuration from YAML file"""
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
@@ -44,7 +44,7 @@ def create_enhanced_demo_users(config, count=500, seed=42):
     np.random.seed(seed)
     
     # Initialize user generator with config
-    user_generator = UserGenerator(config_path='config/data_generation_config.yaml')
+    user_generator = UserGenerator(config_path='src/config/data_generation_config.yaml')
     
     # Start with base users
     all_users = user_generator.generate_users(count=count)
@@ -133,8 +133,8 @@ def generate_enhanced_wearable_data(sleep_data_df, users_df, wearable_percentage
     
     # Initialize wearable data generator
     wearable_generator = WearableDataGenerator(
-        config_path='config/data_generation_config.yaml',
-        device_config_path='config/device_profiles.yaml'
+        config_path='src/config/data_generation_config.yaml',
+        device_config_path='src/config/device_profiles.yaml'
     )
     
     # Generate wearable data for the subset
@@ -284,21 +284,21 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
     # Step 1: Generate users distributed throughout the year
     # Import the function from data_generation_script
     from data_generation_script import generate_user_profiles
-    users_df = generate_user_profiles(user_count, config_path='config/data_generation_config.yaml')
+    users_df = generate_user_profiles(user_count, config_path='src/config/data_generation_config.yaml')
     users_df.to_csv(os.path.join(output_dir, 'data', 'users.csv'), index=False)
     
     # Step 2: Generate sleep data for each user from creation date
     # Import the function from data_generation_script
     from data_generation_script import SleepDataGenerator
-    sleep_data_gen = SleepDataGenerator(config_path='config/data_generation_config.yaml')
+    sleep_data_gen = SleepDataGenerator(config_path='src/config/data_generation_config.yaml')
     sleep_data_df = sleep_data_gen.generate_sleep_data(users_df)
     sleep_data_df.to_csv(os.path.join(output_dir, 'data', 'sleep_data.csv'), index=False)
     
     # Step 3: Generate wearable data for a percentage of users
     print(f"\nGenerating wearable data for {wearable_percentage}% of users...")
     from data_generation_script import WearableDataGenerator
-    wearable_gen = WearableDataGenerator(config_path='config/data_generation_config.yaml', 
-                                       device_config_path='config/device_profiles.yaml')
+    wearable_gen = WearableDataGenerator(config_path='src/config/data_generation_config.yaml', 
+                                       device_config_path='src/config/device_profiles.yaml')
     wearable_data_df = wearable_gen.generate_wearable_data(sleep_data_df, users_df)
     wearable_data_df.to_csv(os.path.join(output_dir, 'data', 'wearable_data.csv'), index=False)
     

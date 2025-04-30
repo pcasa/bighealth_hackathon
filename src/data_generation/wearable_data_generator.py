@@ -10,7 +10,7 @@ class WearableDataGenerator(BaseDataGenerator):
     Wearable data generator that inherits from the BaseDataGenerator.
     Generates synthetic wearable device data based on sleep patterns and device specifications.
     """
-    def __init__(self, config_path='config/data_generation_config.yaml', device_config_path='config/device_profiles.yaml'):
+    def __init__(self, config_path='src/config/data_generation_config.yaml', device_config_path='src/config/device_profiles.yaml'):
         # Initialize the base generator
         super().__init__(config_path)
         
@@ -24,14 +24,43 @@ class WearableDataGenerator(BaseDataGenerator):
         """Generate wearable device data based on sleep data"""
         all_wearable_data = []
         
-        # Join sleep data with user data to get device type
-        merged_data = pd.merge(sleep_data_df, users_df[['user_id', 'device_type']], on='user_id')
+        # Ensure both DataFrames have the user_id column
+        if 'user_id' not in sleep_data_df.columns:
+            print("Error: 'user_id' column missing from sleep_data_df")
+            return pd.DataFrame()
+            
+        if 'user_id' not in users_df.columns:
+            print("Error: 'user_id' column missing from users_df")
+            return pd.DataFrame()
         
-        for _, record in merged_data.iterrows():
-            wearable_data = self._generate_record_wearable_data(record)
-            all_wearable_data.append(wearable_data)
+        # Ensure users_df has the device_type column
+        if 'device_type' not in users_df.columns:
+            print("Error: 'device_type' column missing from users_df")
+            return pd.DataFrame()
         
-        return pd.DataFrame(all_wearable_data)
+        # Print column names for debugging
+        print(f"Sleep data columns: {sleep_data_df.columns.tolist()}")
+        print(f"Users data columns: {users_df.columns.tolist()}")
+        
+        try:
+            # Join sleep data with user data to get device type
+            merged_data = pd.merge(sleep_data_df, users_df[['user_id', 'device_type']], on='user_id')
+            
+            print(f"Successfully merged data with {len(merged_data)} rows")
+            
+            for _, record in merged_data.iterrows():
+                try:
+                    wearable_data = self._generate_record_wearable_data(record)
+                    all_wearable_data.append(wearable_data)
+                except Exception as e:
+                    print(f"Error generating wearable data for record: {e}")
+                    continue
+            
+            return pd.DataFrame(all_wearable_data)
+        except Exception as e:
+            print(f"Error in generate_wearable_data: {e}")
+            # Return empty DataFrame as fallback
+            return pd.DataFrame()
     
     def _generate_record_wearable_data(self, record):
         """Generate wearable data for a single sleep record"""

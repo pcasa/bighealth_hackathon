@@ -14,7 +14,7 @@ from scripts.sleep_advisor import get_user_sleep_data
 # Add the src directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.models.recommendation_engine import SleepRecommendationEngine
+from core.recommendation.recommendation_engine import SleepRecommendationEngine
 from src.core.models.sleep_quality import SleepQualityModel
 from src.core.data_processing.preprocessing import Preprocessor
 

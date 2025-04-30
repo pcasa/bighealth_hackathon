@@ -176,7 +176,7 @@ def train_model_with_fixes():
     sleep_data_df = add_missing_features(sleep_data_df)
     
     # Load model configuration
-    config_path = 'config/model_config.yaml'
+    config_path = 'src/config/model_config.yaml'
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
     

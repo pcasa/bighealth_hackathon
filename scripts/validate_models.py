@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument(
         '--config', 
         type=str, 
-        default='config/model_config.yaml',
+        default='src/config/model_config.yaml',
         help='Path to model configuration file'
     )
     

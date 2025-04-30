@@ -11,7 +11,7 @@ from datetime import datetime
 from src.core.models.sleep_quality import SleepQualityLSTM
 
 class TransferLearning:
-    def __init__(self, config_path='config/model_config.yaml'):
+    def __init__(self, config_path='src/config/model_config.yaml'):
         """Initialize the transfer learning module"""
         # Load configuration
         with open(config_path, 'r') as file:

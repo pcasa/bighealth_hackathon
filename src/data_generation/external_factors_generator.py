@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from src.data_generation.base_generator import BaseDataGenerator
 
 class ExternalFactorsGenerator(BaseDataGenerator):
-    def __init__(self, config_path='config/data_generation_config.yaml'):
+    def __init__(self, config_path='src/config/data_generation_config.yaml'):
         """Initialize the external factors generator"""
         super().__init__(config_path)
         

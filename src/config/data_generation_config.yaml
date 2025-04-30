@@ -2,7 +2,7 @@
 
 # User profile settings
 user_profiles:
-  count: 500
+  count: 200
   age_range: [18, 85]
   genders: ['male', 'female', 'non-binary']
   sleep_patterns:

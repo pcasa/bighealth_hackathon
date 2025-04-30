@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument(
         '--config', 
         type=str, 
-        default='config/data_generation_config.yaml',
+        default='src/config/data_generation_config.yaml',
         help='Path to data generation configuration file'
     )
     

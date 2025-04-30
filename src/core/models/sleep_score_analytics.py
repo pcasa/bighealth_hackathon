@@ -4,16 +4,64 @@
 Module for analyzing sleep scores across demographic and temporal dimensions.
 This module works with the existing Sleep Insights App architecture.
 """
-
+from pydantic import Field, validator
+from typing import Dict, List, Optional, Any
+from enum import Enum
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
+from core.models.base_model import BaseModel
 from src.core.models.sleep_quality import SleepQualityModel
 from src.core.data_processing.preprocessing import Preprocessor
 from src.utils.constants import profession_categories
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
+
+class AnalysisDimension(str, Enum):
+    """Dimensions for sleep score analysis"""
+    AGE_RANGE = "age_range"
+    PROFESSION = "profession_category"
+    REGION = "region_category"
+    SEASON = "season"
+    GENDER = "gender"
+    WEEKEND = "is_weekend"
+
+
+class AnalysisMetric(str, Enum):
+    """Metrics for sleep score analysis"""
+    SLEEP_SCORE = "sleep_score"
+    SLEEP_EFFICIENCY = "sleep_efficiency"
+    SLEEP_DURATION = "sleep_duration_hours"
+    SUBJECTIVE_RATING = "subjective_rating"
+
+
+class AnalysisStats(BaseModel):
+    """Statistical analysis for a category"""
+    count: int
+    mean: float
+    median: float
+    std: float
+    min: float
+    max: float
+
+
+class DimensionAnalysis(BaseModel):
+    """Analysis results for a specific dimension"""
+    dimension: AnalysisDimension
+    metric: AnalysisMetric
+    results: Dict[str, AnalysisStats]
+    visualization_path: Optional[str] = None
+
+
+class CrossDimensionAnalysis(BaseModel):
+    """Analysis results across two dimensions"""
+    primary_dimension: AnalysisDimension
+    secondary_dimension: AnalysisDimension
+    metric: AnalysisMetric
+    heatmap_data: Dict[str, Dict[str, float]]
+    visualization_path: Optional[str] = None
+
 
 class SleepScoreAnalytics:
     """Class for analyzing sleep scores across different dimensions"""
@@ -93,18 +141,16 @@ class SleepScoreAnalytics:
         
         return scored_data
     
-    def analyze_by_dimension(self, data, dimension, metric='sleep_score'):
+    def analyze_by_dimension(self, data, dimension, metric='sleep_score') -> DimensionAnalysis:
         """Analyze metrics by a specific dimension"""
-        # Validate dimension
-        valid_dimensions = [
-            'age_range', 'profession_category', 
-            'region_category', 'season',
-            'gender', 'is_weekend'
-        ]
-        
-        if dimension not in valid_dimensions and dimension not in data.columns:
-            raise ValueError(f"Invalid dimension: {dimension}. "
-                           f"Valid dimensions are: {valid_dimensions} or any column in the data.")
+        # Validate dimension and metric
+        try:
+            dim = AnalysisDimension(dimension)
+            met = AnalysisMetric(metric)
+        except ValueError:
+            # Fallback for custom dimensions or metrics
+            dim = dimension
+            met = metric
         
         # Group by dimension and calculate stats
         grouped = data.groupby(dimension)[metric].agg([
@@ -114,7 +160,24 @@ class SleepScoreAnalytics:
         # Sort by mean score descending
         sorted_data = grouped.sort_values('mean', ascending=False)
         
-        return sorted_data
+        # Convert to DimensionAnalysis model
+        results = {}
+        for _, row in sorted_data.iterrows():
+            category = row[dimension]
+            results[category] = AnalysisStats(
+                count=int(row['count']),
+                mean=float(row['mean']),
+                median=float(row['median']),
+                std=float(row['std']),
+                min=float(row['min']),
+                max=float(row['max'])
+            )
+        
+        return DimensionAnalysis(
+            dimension=dim,
+            metric=met,
+            results=results
+        )
     
     def analyze_all_dimensions(self, data, metric='sleep_score'):
         """Analyze metrics across all key dimensions"""

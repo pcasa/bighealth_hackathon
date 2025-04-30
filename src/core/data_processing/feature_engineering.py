@@ -2,6 +2,61 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from typing import Tuple, List, Dict, Optional
+from pydantic import BaseModel, Field
+
+class FeatureSet(BaseModel):
+    """Model to validate engineered features"""
+    # User identification
+    user_id: str
+    
+    # Temporal features
+    date: Optional[str] = None
+    hour_sin: Optional[float] = None
+    hour_cos: Optional[float] = None
+    month_sin: Optional[float] = None
+    month_cos: Optional[float] = None
+    day_of_week_sin: Optional[float] = None
+    day_of_week_cos: Optional[float] = None
+    is_weekend: Optional[bool] = None
+    
+    # Sleep metrics
+    sleep_efficiency: Optional[float] = Field(None, ge=0.0, le=1.0)
+    sleep_duration_hours: Optional[float] = Field(None, ge=0.0, le=24.0)
+    sleep_onset_latency_minutes: Optional[float] = Field(None, ge=0.0)
+    awakenings_count: Optional[int] = Field(None, ge=0)
+    total_awake_minutes: Optional[float] = Field(None, ge=0.0)
+    
+    # Demographic features
+    age_normalized: Optional[float] = Field(None, ge=0.0, le=1.0)
+    
+    # One-hot encoded professions
+    profession_healthcare: Optional[float] = Field(None, ge=0.0, le=1.0)
+    profession_tech: Optional[float] = Field(None, ge=0.0, le=1.0)
+    profession_service: Optional[float] = Field(None, ge=0.0, le=1.0)
+    profession_education: Optional[float] = Field(None, ge=0.0, le=1.0)
+    profession_office: Optional[float] = Field(None, ge=0.0, le=1.0)
+    profession_other: Optional[float] = Field(None, ge=0.0, le=1.0)
+    
+    # One-hot encoded seasons
+    season_Winter: Optional[float] = Field(None, ge=0.0, le=1.0)
+    season_Spring: Optional[float] = Field(None, ge=0.0, le=1.0)
+    season_Summer: Optional[float] = Field(None, ge=0.0, le=1.0)
+    season_Fall: Optional[float] = Field(None, ge=0.0, le=1.0)
+    
+    # Wearable features
+    deep_sleep_percentage: Optional[float] = Field(None, ge=0.0, le=1.0)
+    rem_sleep_percentage: Optional[float] = Field(None, ge=0.0, le=1.0)
+    light_sleep_percentage: Optional[float] = Field(None, ge=0.0, le=1.0)
+    awake_percentage: Optional[float] = Field(None, ge=0.0, le=1.0)
+    heart_rate_variability: Optional[float] = None
+    average_heart_rate: Optional[float] = None
+    
+    # Weather and external factors
+    temperature: Optional[float] = None
+    humidity: Optional[float] = None
+    pressure: Optional[float] = None
+    precipitation: Optional[float] = None
 
 class FeatureEngineering:
     def __init__(self, config=None):
@@ -26,6 +81,30 @@ class FeatureEngineering:
             
         self.categorical_encoders = {}
         self.feature_columns = []
+
+
+    def _fix_feature_types(self, feature_dict):
+        """Fix data types to ensure compatibility with Pydantic models"""
+        # Make a copy to avoid modifying the original
+        fixed_dict = feature_dict.copy()
+        
+        # Convert awakenings_count from float to int
+        if 'awakenings_count' in fixed_dict and isinstance(fixed_dict['awakenings_count'], float):
+            fixed_dict['awakenings_count'] = int(fixed_dict['awakenings_count'])
+
+        # Convert is_weekend from float to bool
+        if 'is_weekend' in fixed_dict and not isinstance(fixed_dict['is_weekend'], bool):
+            # If it's a number, consider positive values as True, 0 or negative as False
+            if isinstance(fixed_dict['is_weekend'], (int, float, np.number)):
+                fixed_dict['is_weekend'] = bool(fixed_dict['is_weekend'] > 0)
+            # If it's a string, use string conversion
+            elif isinstance(fixed_dict['is_weekend'], str):
+                fixed_dict['is_weekend'] = fixed_dict['is_weekend'].lower() in ('true', 't', 'yes', 'y', '1')
+        
+        
+        # Convert any other fields that need type conversion here
+        
+        return fixed_dict
     
     # Update the create_features method in the FeatureEngineering class
     def create_features(self, data, include_wearable=None, include_external=None):
@@ -158,6 +237,30 @@ class FeatureEngineering:
         
         # Store feature columns for later use
         self.feature_columns = feature_columns
+
+        # Validate features using Pydantic
+        valid_features = []
+        invalid_indices = []
+        
+        for i, row in feature_data.iterrows():
+            try:
+                # Extract features
+                feature_dict = {col: row[col] for col in self.feature_columns if col in row}
+                
+                # Fix data types before validation
+                fixed_feature_dict = self._fix_feature_types(feature_dict)
+                
+                # Validate features
+                FeatureSet(user_id=row['user_id'], **fixed_feature_dict)
+                valid_features.append(i)
+            except Exception as e:
+                print(f"Invalid feature set at index {i}: {e}")
+                invalid_indices.append(i)
+        
+        # Keep only valid features
+        if invalid_indices:
+            print(f"Removing {len(invalid_indices)} invalid feature sets")
+            feature_data = feature_data.loc[valid_features]
         
         # Separate targets from features
         targets_df = pd.DataFrame()

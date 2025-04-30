@@ -1,8 +1,10 @@
+# Modified version of train_models.py with validation fixes
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Script to train machine learning models for the Sleep Insights App.
 This handles preprocessing, feature engineering, and model training.
+Includes enhanced validation to prevent negative values causing empty datasets.
 """
 
 import os
@@ -24,6 +26,7 @@ from src.core.data_processing.preprocessing import Preprocessor
 from src.core.data_processing.feature_engineering import FeatureEngineering
 from src.core.models.sleep_quality import SleepQualityModel
 from src.core.models.transfer_learning import TransferLearning
+from src.utils.data_validation_fix import fix_feature_ranges, validate_dataframe_for_model, patch_feature_engineering
 
 # Set up logging
 logging.basicConfig(
@@ -31,7 +34,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('train_models.log')
+        logging.FileHandler('train_models_fixed.log')
     ]
 )
 
@@ -44,7 +47,7 @@ def parse_args():
     parser.add_argument(
         '--config', 
         type=str, 
-        default='config/model_config.yaml',
+        default='src/config/model_config.yaml',
         help='Path to model configuration file'
     )
     
@@ -120,6 +123,15 @@ def load_data(data_dir):
         except Exception as e:
             logger.warning(f"Could not load external factors data: {str(e)}")
             external_factors_df = None
+
+        # Apply initial validation to all dataframes
+        users_df = ensure_clean_user_ids(users_df)
+        sleep_data_df = fix_feature_ranges(sleep_data_df)
+        sleep_data_df = ensure_clean_user_ids(sleep_data_df)
+        
+        if wearable_data_df is not None:
+            wearable_data_df = fix_feature_ranges(wearable_data_df)
+            wearable_data_df = ensure_clean_user_ids(wearable_data_df)
             
         return users_df, sleep_data_df, wearable_data_df, external_factors_df
         
@@ -188,51 +200,19 @@ def add_missing_features(data):
     
     return data
 
-def ensure_numeric_data(data_df, feature_columns):
-    """Ensure all columns used for training contain only numeric data."""
-    modified_df = data_df.copy()
-    problematic_columns = []
+def ensure_clean_user_ids(df):
+    """Ensure user IDs are clean strings without fractional parts"""
+    if 'user_id' in df.columns:
+        # First convert to string
+        df['user_id'] = df['user_id'].astype(str)
+        
+        # Remove any fractional parts (e.g., "123.0" -> "123")
+        df['user_id'] = df['user_id'].apply(lambda x: x.split('.')[0] if '.' in x else x)
+        
+        # Log a sample for debugging
+        logger.info(f"Sample user_ids after cleaning: {df['user_id'].head(5).tolist()}")
     
-    for col in feature_columns:
-        if col in modified_df.columns:
-            # Check if column contains any non-numeric values
-            non_numeric = False
-            
-            # For object dtype columns, check if they can be converted to numeric
-            if modified_df[col].dtype == 'object':
-                non_numeric = True
-                print(f"Column {col} has object dtype. Attempting conversion...")
-                
-                # Try to convert to numeric
-                try:
-                    modified_df[col] = pd.to_numeric(modified_df[col], errors='coerce')
-                    non_numeric = False
-                    print(f"Successfully converted {col} to numeric")
-                except Exception as e:
-                    print(f"Failed to convert {col}: {str(e)}")
-                    problematic_columns.append(col)
-                    continue
-            
-            # Even for numeric dtypes, check for NaN or inf values
-            if modified_df[col].isna().any() or (np.isinf(modified_df[col]).any() if np.issubdtype(modified_df[col].dtype, np.number) else False):
-                print(f"Column {col} has NaN or inf values. Filling with zeros...")
-                modified_df[col] = modified_df[col].fillna(0)
-                # Replace inf with large values
-                modified_df[col] = modified_df[col].replace([np.inf, -np.inf], 0)
-    
-    # Drop columns that couldn't be converted to numeric
-    if problematic_columns:
-        print(f"Dropping problematic columns: {problematic_columns}")
-        modified_df = modified_df.drop(columns=problematic_columns)
-    
-    # Print a sample of the data to verify
-    for col in modified_df.columns:
-        if col in feature_columns:
-            print(f"Column {col} now has dtype: {modified_df[col].dtype}")
-            if modified_df[col].dtype == 'object':
-                print(f"WARNING: Column {col} is still object type")
-    
-    return modified_df
+    return df
 
 def main():
     """Main function to train models."""
@@ -367,8 +347,8 @@ def main():
     
     logger.info(f"Controlled merge complete: {len(merged_df)} records, {merged_df['user_id'].nunique()} unique users")
     
-    # Skip the regular preprocessor and use our merged data directly
-    processed_data = merged_df
+    # Apply validation to merged data
+    processed_data = validate_dataframe_for_model(merged_df)
     
     # Handle missing values
     for col in processed_data.columns:
@@ -390,17 +370,33 @@ def main():
         processed_data['sleep_efficiency'] = processed_data['sleep_efficiency'].clip(0, 1)  # Bound within valid range
         logger.info("Calculated sleep_efficiency from duration and time in bed")
     
+    # Final validation pass before feature engineering
+    processed_data = fix_feature_ranges(processed_data)
     logger.info(f"Processed data ready: {len(processed_data)} records, {processed_data['user_id'].nunique()} unique users")
     
     # Engineer features
     logger.info("Starting feature engineering")
     feature_engineer = FeatureEngineering(config.get('feature_engineering', {}))
+    
+    # Patch the feature engineer to ensure it keeps values in valid ranges
+    feature_engineer = patch_feature_engineering(feature_engineer)
+    
+    # Create features
     features_df, targets_df = feature_engineer.create_features(processed_data)
     
-    # Ensure user_id is present in features_df and targets_df
+    # Apply data validation to features and targets
+    logger.info("Validating engineered features")
+    features_df = validate_dataframe_for_model(features_df)
+    targets_df = validate_dataframe_for_model(targets_df)
+    
+    # Check if 'user_id' is present
     if 'user_id' not in features_df.columns and 'user_id' in processed_data.columns:
         logger.info("Adding user_id to features_df from processed_data")
-        features_df['user_id'] = processed_data['user_id'].values[:len(features_df)]
+        # Make sure we don't exceed the length of features_df
+        user_ids = processed_data['user_id'].values[:len(features_df)]
+        # Convert any float user_ids to integers by removing fractional parts
+        user_ids = [str(int(float(uid))) if isinstance(uid, (float, np.float64)) else str(uid) for uid in user_ids]
+        features_df['user_id'] = user_ids
     
     if 'user_id' not in targets_df.columns and 'user_id' in processed_data.columns:
         logger.info("Adding user_id to targets_df from processed_data")
@@ -465,6 +461,10 @@ def main():
             combined_data['age_normalized'] = 0.35  # Default age 35
             logger.warning("Added default age_normalized as age column is missing")
     
+    # Final validation on combined data
+    logger.info("Final validation of combined data")
+    combined_data = validate_dataframe_for_model(combined_data)
+    
     # Check all features required by the model
     # From the config model features list - include all the ones that might be required
     model_features = config.get('sleep_quality_model', {}).get('features', [
@@ -503,24 +503,36 @@ def main():
                 # Default to 0 for other features
                 combined_data[feature] = 0.0
     
+    logger.info(f"Combined data ready: {len(combined_data)} records, {combined_data['user_id'].nunique()} unique users")
+    
     # Split data into train/validation (80/20)
     unique_users = combined_data['user_id'].unique()
-    train_users, val_users = train_test_split(
-        unique_users, 
-        test_size=args.test_size, 
-        random_state=args.seed
-    )
+    logger.info(f"Number of unique users for splitting: {len(unique_users)}")
 
-    train_data = combined_data[combined_data['user_id'].isin(train_users)].reset_index(drop=True)
-    val_data = combined_data[combined_data['user_id'].isin(val_users)].reset_index(drop=True)
+    # Handle edge cases where we have too few users
+    if len(unique_users) < 2:
+        logger.warning(f"Not enough unique users ({len(unique_users)}) for user-based splitting. "
+                    "Falling back to record-based split.")
+        # Instead of splitting by users, split the combined data directly
+        train_data, val_data = train_test_split(
+            combined_data, 
+            test_size=args.test_size, 
+            random_state=args.seed
+        )
+    else:
+        # Proceed with user-based splitting as intended
+        train_users, val_users = train_test_split(
+            unique_users, 
+            test_size=args.test_size, 
+            random_state=args.seed
+        )
+        
+        train_data = combined_data[combined_data['user_id'].isin(train_users)].reset_index(drop=True)
+        val_data = combined_data[combined_data['user_id'].isin(val_users)].reset_index(drop=True)
 
-    logger.info(f"Split data into {len(train_data)} training samples and {len(val_data)} validation samples")
-
-    # Add this new code here
-    logger.info("Ensuring all data is numeric before training...")
-    feature_columns = [col for col in train_data.columns if col not in ['user_id', 'date', 'is_synthetic']]
-    train_data = ensure_numeric_data(train_data, feature_columns)
-    val_data = ensure_numeric_data(val_data, feature_columns)
+    # Final validation on split data
+    train_data = validate_dataframe_for_model(train_data)
+    val_data = validate_dataframe_for_model(val_data)
     
     logger.info(f"Split data into {len(train_data)} training samples and {len(val_data)} validation samples")
     
@@ -537,6 +549,17 @@ def main():
     except Exception as e:
         logger.warning(f"Error during sequence-based training: {str(e)}")
         logger.info("Falling back to limited data training method")
+        
+        # Try to get more information about the error
+        logger.info(f"Train data shape: {train_data.shape}")
+        logger.info(f"Train data columns: {train_data.columns.tolist()}")
+        if 'user_id' in train_data.columns:
+            logger.info(f"Train data unique users: {train_data['user_id'].nunique()}")
+        
+        # Additional validation before fallback training
+        combined_data = validate_dataframe_for_model(combined_data)
+        
+        # Use the fallback method
         training_history = sleep_quality_model.train_with_limited_data(combined_data)
         logger.info("Fallback training completed successfully")
     
@@ -560,7 +583,7 @@ def main():
     })
     
     # Generate model card using the method in SleepQualityModel
-    model_card_path = os.path.join(args.output_dir, 'model_card', 'sleep_quality_model.json')
+    model_card_path = os.path.join(args.output_dir, 'model_cards', 'sleep_quality_model.json')
     performance_metrics = {
         'mse': metrics['final_val_loss'],
         'rmse': np.sqrt(metrics['final_val_loss']),
@@ -603,6 +626,10 @@ def main():
         # Adapt model to each user
         for user_id in transfer_users:
             user_data = combined_data[combined_data['user_id'] == user_id]
+            
+            # Validate the user data
+            user_data = validate_dataframe_for_model(user_data)
+            
             if len(user_data) >= transfer_learning_config['hyperparameters'].get('min_user_samples', 5):
                 logger.info(f"Adapting model for user: {user_id}")
                 try:

@@ -8,6 +8,9 @@ import os
 import yaml
 import json
 from datetime import datetime, timedelta
+from pydantic import BaseModel, Field, validator
+from typing import List, Dict, Optional, Any, Union
+
 from src.core.models.generate_model_card import generate_model_card_with_samples
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
 
@@ -50,8 +53,32 @@ class SleepQualityLSTM(nn.Module):
         
         return out
 
+class ModelInput(BaseModel):
+    """Validates input data for the sleep quality model"""
+    # Required fields
+    sleep_efficiency: float = Field(..., ge=0.0, le=1.0)
+    sleep_duration_hours: float = Field(..., ge=0.0, le=24.0)
+    
+    # Optional fields with validation
+    sleep_onset_latency_minutes: Optional[float] = Field(None, ge=0.0)
+    deep_sleep_percentage: Optional[float] = Field(None, ge=0.0, le=1.0)
+    rem_sleep_percentage: Optional[float] = Field(None, ge=0.0, le=1.0)
+    awakenings_count: Optional[int] = Field(None, ge=0)
+    
+    # Add more fields as needed
+
+
+class ModelOutput(BaseModel):
+    """Validates and structures the model output"""
+    predicted_sleep_efficiency: float = Field(..., ge=0.0, le=1.0)
+    prediction_confidence: float = Field(..., ge=0.0, le=1.0)
+    
+    # Optional additional outputs
+    sleep_score: Optional[int] = Field(None, ge=0, le=100)
+    component_scores: Optional[Dict[str, float]] = Field(None)
+
 class SleepQualityModel:
-    def __init__(self, config_path='config/model_config.yaml'):
+    def __init__(self, config_path='src/config/model_config.yaml'):
         """Initialize the sleep quality model"""
         # Load configuration
         with open(config_path, 'r') as file:
@@ -514,8 +541,28 @@ class SleepQualityModel:
         if self.model is None:
             raise ValueError("Model not trained or loaded")
         
+        # Validate input data
+        validated_data = []
+        for _, row in data.iterrows():
+            try:
+                # Extract required features
+                input_dict = {col: row[col] for col in self.feature_columns if col in row}
+                # Validate with ModelInput
+                ModelInput(**input_dict)
+                validated_data.append(row)
+            except Exception as e:
+                print(f"Invalid input data: {e}")
+                # Skip invalid data
+                continue
+        
+        # Create a DataFrame from validated data
+        if not validated_data:
+            raise ValueError("No valid input data after validation")
+        
+        valid_df = pd.DataFrame(validated_data)
+        
         # Preprocess data
-        X, _, user_ids, dates, _ = self.preprocess_data(data, sequence_length)
+        X, _, user_ids, dates, _ = self.preprocess_data(valid_df, sequence_length)
         
         # Move to device
         X = X.to(self.device)
@@ -534,7 +581,28 @@ class SleepQualityModel:
             'predicted_sleep_efficiency': predictions
         })
         
-        return results
+        # Validate output
+        validated_outputs = []
+        for _, row in results.iterrows():
+            try:
+                # Validate with ModelOutput
+                output = ModelOutput(
+                    predicted_sleep_efficiency=row['predicted_sleep_efficiency'],
+                    prediction_confidence=0.8  # Default confidence
+                )
+                validated_outputs.append(output.dict())
+            except Exception as e:
+                print(f"Invalid output: {e}")
+                # Clamp to valid range
+                pred_eff = max(0.0, min(1.0, row['predicted_sleep_efficiency']))
+                output = ModelOutput(
+                    predicted_sleep_efficiency=pred_eff,
+                    prediction_confidence=0.5  # Lower confidence for fixed outputs
+                )
+                validated_outputs.append(output.dict())
+        
+        # Convert validated outputs back to DataFrame
+        return pd.DataFrame(validated_outputs)
     
     def calculate_sleep_score(self, sleep_efficiency, subjective_rating=None, additional_metrics=None):
         """Calculate an overall sleep score based on sleep efficiency and other metrics"""

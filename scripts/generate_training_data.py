@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument(
         '--config', 
         type=str, 
-        default='config/data_generation_config.yaml',
+        default='src/config/data_generation_config.yaml',
         help='Path to data generation configuration file'
     )
     
@@ -120,9 +120,9 @@ def main():
     
     # Initialize generators
     user_generator = UserGenerator(config_path=args.config)
-    sleep_data_generator = SleepDataGenerator(config_path='config/data_generation_config.yaml')
-    wearable_data_generator = WearableDataGenerator(config_path='config/data_generation_config.yaml', 
-                                          device_config_path='config/device_profiles.yaml')
+    sleep_data_generator = SleepDataGenerator(config_path='src/config/data_generation_config.yaml')
+    wearable_data_generator = WearableDataGenerator(config_path='src/config/data_generation_config.yaml', 
+                                          device_config_path='src/config/device_profiles.yaml')
 
     external_factors_generator = ExternalFactorsGenerator()
     

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 class BaseDataGenerator:
     """Base class for all data generators with common functionality"""
     
-    def __init__(self, config_path='config/data_generation_config.yaml'):
+    def __init__(self, config_path='src/config/data_generation_config.yaml'):
         """Initialize the base generator with configuration"""
         self.config = self._load_config(config_path)
         

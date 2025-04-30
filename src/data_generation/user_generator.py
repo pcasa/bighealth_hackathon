@@ -7,13 +7,16 @@ from datetime import datetime, timedelta
 from faker import Faker
 
 class UserGenerator:
-    def __init__(self, config_path='config/data_generation_config.yaml'):
+    def __init__(self, config_path='src/config/data_generation_config.yaml'):
         print(f"Loading configuration from {config_path}")
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
         self.user_config = self.config['user_profiles']
         self.sleep_patterns = self.config['sleep_patterns']
+
+        self.user_config = self.config['user_profiles']
+        print(f"User count from config: {self.user_config['count']}")
         
         # Initialize Faker for generating realistic user data
         self.faker = Faker()

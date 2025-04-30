@@ -6,12 +6,50 @@ from datetime import datetime
 import logging
 from multiprocessing import Pool, cpu_count
 
+from pydantic import Field
+from pyparsing import Dict, Optional
+
+from core.models.base_model import BaseModel
 from src.core.data_processing.preprocessing import DataPreprocessor
 from src.core.data_processing.feature_engineering import FeatureEngineering
 
+class BatchConfig(BaseModel):
+    """Configuration for batch processing"""
+    batch_size: int = Field(1000, ge=100, le=10000)
+    checkpoint_dir: str = "data/checkpoints"
+    output_dir: str = "data/processed"
+    parallel_processing: bool = True
+    max_workers: int = Field(4, ge=1, le=16)
+
+
+class BatchProgressTracker(BaseModel):
+    """Track progress of a batch processing run"""
+    started_at: datetime
+    last_processed_row: int = 0
+    total_rows: int = 0
+    processed_batches: int = 0
+    error_count: int = 0
+    success_count: int = 0
+    status: str = "running"  # running, completed, failed
+    
+    @property
+    def completion_percentage(self) -> float:
+        """Calculate completion percentage"""
+        if self.total_rows == 0:
+            return 0.0
+        return (self.last_processed_row / self.total_rows) * 100
+    
+    @property
+    def elapsed_time(self) -> float:
+        """Calculate elapsed time in seconds"""
+        return (datetime.now() - self.started_at).total_seconds()
+
+
+
 class BatchProcessor:
-    def __init__(self, batch_size=1000, checkpoint_dir='data/checkpoints'):
+    def __init__(self, batch_size=1000, checkpoint_dir='data/checkpoints', config: Optional[Dict] = None):
         """Initialize the batch processor"""
+        self.config = BatchConfig(**(config or {}))
         self.batch_size = batch_size
         self.checkpoint_dir = checkpoint_dir
         self.preprocessor = DataPreprocessor()
@@ -29,10 +67,26 @@ class BatchProcessor:
         self.logger = logging.getLogger('BatchProcessor')
         
         # Ensure checkpoint directory exists
-        os.makedirs(checkpoint_dir, exist_ok=True)
+        os.makedirs(self.config.checkpoint_dir, exist_ok=True)
+        os.makedirs(self.config.output_dir, exist_ok=True)
     
     def process_data(self, input_file, output_file, parallel=True):
         """Process data in batches with checkpointing"""
+        # Set output file if not provided
+        if output_file is None:
+            base_name = os.path.splitext(os.path.basename(input_file))[0]
+            output_file = os.path.join(self.config.output_dir, f"{base_name}_processed.csv")
+        
+         # Set parallel processing flag
+        parallel = parallel if parallel is not None else self.config.parallel_processing
+        
+        # Create progress tracker
+        progress = BatchProgressTracker(
+            started_at=datetime.now(),
+            total_rows=0,  # Will be updated after reading file
+            status="running"
+        )
+        
         self.logger.info(f"Starting batch processing of {input_file}")
         
         # Check for existing checkpoint
