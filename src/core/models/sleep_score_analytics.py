@@ -10,10 +10,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-from src.models.sleep_quality import SleepQualityModel
-from src.data_processing.preprocessing import Preprocessor
+from src.core.models.sleep_quality import SleepQualityModel
+from src.core.data_processing.preprocessing import Preprocessor
 from src.utils.constants import profession_categories
-from src.models.improved_sleep_score import ImprovedSleepScoreCalculator
+from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
 
 class SleepScoreAnalytics:
     """Class for analyzing sleep scores across different dimensions"""

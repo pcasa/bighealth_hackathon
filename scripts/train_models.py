@@ -1,4 +1,3 @@
-# scripts/train_models.py
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
@@ -16,16 +15,15 @@ import numpy as np
 import torch
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-import json
 from datetime import datetime, timedelta
 
 # Add the src directory to the path so we can import our modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.data_processing.preprocessing import Preprocessor
-from src.data_processing.feature_engineering import FeatureEngineering
-from src.models.sleep_quality import SleepQualityModel
-from src.models.transfer_learning import TransferLearning
+from src.core.data_processing.preprocessing import Preprocessor
+from src.core.data_processing.feature_engineering import FeatureEngineering
+from src.core.models.sleep_quality import SleepQualityModel
+from src.core.models.transfer_learning import TransferLearning
 
 # Set up logging
 logging.basicConfig(
@@ -95,174 +93,146 @@ def create_output_directories(output_dir):
     """Create output directories if they don't exist."""
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(os.path.join(output_dir, 'model_cards')).mkdir(parents=True, exist_ok=True)
+    Path(os.path.join(output_dir, 'user_models')).mkdir(parents=True, exist_ok=True)
     logger.info(f"Created output directory: {output_dir}")
 
 def load_data(data_dir):
     """Load data from CSV files."""
-    users_df = pd.read_csv(os.path.join(data_dir, 'users.csv'))
-    sleep_data_df = pd.read_csv(os.path.join(data_dir, 'sleep_data.csv'))
-    wearable_data_df = pd.read_csv(os.path.join(data_dir, 'wearable_data.csv'))
-    external_factors_df = pd.read_csv(os.path.join(data_dir, 'external_factors.csv'))
-    
-    logger.info(f"Loaded {len(users_df)} users")
-    logger.info(f"Loaded {len(sleep_data_df)} sleep records")
-    logger.info(f"Loaded {len(wearable_data_df)} wearable records")
-    logger.info(f"Loaded {len(external_factors_df)} external factor records")
-    
-    return users_df, sleep_data_df, wearable_data_df, external_factors_df
+    try:
+        users_df = pd.read_csv(os.path.join(data_dir, 'users.csv'))
+        sleep_data_df = pd.read_csv(os.path.join(data_dir, 'sleep_data.csv'))
+        
+        logger.info(f"Loaded {len(users_df)} users")
+        logger.info(f"Loaded {len(sleep_data_df)} sleep records")
+        
+        # Attempt to load wearable data
+        try:
+            wearable_data_df = pd.read_csv(os.path.join(data_dir, 'wearable_data.csv'))
+            logger.info(f"Loaded {len(wearable_data_df)} wearable records")
+        except Exception as e:
+            logger.warning(f"Could not load wearable data: {str(e)}")
+            wearable_data_df = None
+        
+        # Attempt to load external factors data
+        try:
+            external_factors_df = pd.read_csv(os.path.join(data_dir, 'external_factors.csv'))
+            logger.info(f"Loaded {len(external_factors_df)} external factor records")
+        except Exception as e:
+            logger.warning(f"Could not load external factors data: {str(e)}")
+            external_factors_df = None
+            
+        return users_df, sleep_data_df, wearable_data_df, external_factors_df
+        
+    except Exception as e:
+        logger.error(f"Error loading data: {str(e)}")
+        raise
 
-def save_model_card(model_name, config, metrics, output_dir):
-    """Create and save a model card with documentation."""
-    model_card = {
-        "model_name": model_name,
-        "version": "1.0.0",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "description": config.get('description', f"Model for {model_name}"),
-        "model_type": config.get('model_type', 'PyTorch Neural Network'),
-        "input_features": config.get('input_features', []),
-        "output": config.get('output', 'Sleep Quality Score'),
-        "performance_metrics": metrics,
-        "limitations": config.get('limitations', [
-            "Limited to the patterns in the training data",
-            "May not generalize to users with rare sleep disorders",
-            "Assumes regular data collection from wearable devices"
-        ]),
-        "intended_use": config.get('intended_use', [
-            "Predict sleep quality based on user and wearable data",
-            "Identify sleep patterns and anomalies",
-            "Provide recommendations for improved sleep"
-        ]),
-        "training_data_characteristics": {
-            "num_users": config.get('num_users', 0),
-            "days_per_user": config.get('days_per_user', 0),
-            "user_demographics": config.get('user_demographics', "Simulated diverse population"),
-            "sleep_patterns": config.get('sleep_patterns', [
-                "Normal Sleeper Pattern",
-                "Insomnia Pattern",
-                "Shift Worker Pattern",
-                "Oversleeper Pattern",
-                "Highly Variable Sleeper"
-            ])
-        },
-        "hyperparameters": config.get('hyperparameters', {})
-    }
+def add_missing_features(data):
+    """Add missing features required by the model."""
+    
+    # 1. Add age_normalized if missing
+    if 'age' in data.columns and 'age_normalized' not in data.columns:
+        data['age_normalized'] = data['age'] / 100.0
+        logger.info("Added missing feature: age_normalized")
+    
+    # 2. Add profession features if missing
+    if 'profession' in data.columns and 'profession_category' not in data.columns:
+        from src.utils.constants import profession_categories
+        
+        def categorize_profession(profession):
+            for category, keywords in profession_categories.items():
+                if isinstance(profession, str) and any(keyword.lower() in profession.lower() for keyword in keywords):
+                    return category
+            return "other"
+        
+        data['profession_category'] = data['profession'].apply(categorize_profession)
+        logger.info("Added missing feature: profession_category")
+        
+        # Add profession one-hot encoding
+        prof_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
+        for category in prof_categories:
+            col_name = f'profession_{category}'
+            if col_name not in data.columns:
+                data[col_name] = (data['profession_category'] == category).astype(float)
+                logger.info(f"Added missing feature: {col_name}")
+    
+    # 3. Add season features if missing
+    if 'date' in data.columns:
+        # Extract month if needed
+        if 'month' not in data.columns:
+            data['month'] = pd.to_datetime(data['date']).dt.month
+            logger.info("Added missing feature: month")
+        
+        # Add season if needed
+        if 'season' not in data.columns:
+            def get_season(month):
+                if month in [12, 1, 2]:
+                    return 'Winter'
+                elif month in [3, 4, 5]:
+                    return 'Spring'
+                elif month in [6, 7, 8]:
+                    return 'Summer'
+                else:  # 9, 10, 11
+                    return 'Fall'
+            
+            data['season'] = data['month'].apply(get_season)
+            logger.info("Added missing feature: season")
+        
+        # Add season one-hot encoding
+        seasons = ['Winter', 'Spring', 'Summer', 'Fall']
+        for season in seasons:
+            col_name = f'season_{season}'
+            if col_name not in data.columns:
+                data[col_name] = (data['season'] == season).astype(float)
+                logger.info(f"Added missing feature: {col_name}")
+    
+    return data
 
-    # Add predictive capabilities section to model_card dictionary
-    model_card["predictive_capabilities"] = {
-        "sleep_quality_predictions": [
-            "Sleep efficiency trends over time based on user-reported data",
-            "Probability of experiencing insomnia on upcoming nights",
-            "Estimated sleep quality for the coming night based on recent patterns",
-            "Expected subjective ratings if certain behaviors are modified"
-        ],
-        "pattern_recognition": [
-            "Sleep consistency patterns and how they affect overall sleep quality",
-            "Identification of insomnia triggers based on correlations in the data",
-            "Detection of severe insomnia episodes before they become chronic",
-            "Recognition of improvement trends even when subjective perception lags"
-        ],
-        "personalized_insights": [
-            "Most effective sleep window based on recorded sleep efficiency data",
-            "Optimal bedtime and wake time for maximum sleep quality",
-            "Personal threshold for sleep onset latency that predicts a good night's sleep",
-            "Impact of awakenings on overall sleep quality for the individual"
-        ],
-        "behavior_impact_assessment": [
-            "Expected improvement if sleep consistency is increased",
-            "Predicted benefits of reducing time in bed for those with extended wake times",
-            "Forecasted sleep efficiency changes with various interventions",
-            "Projected recovery time after periods of severe insomnia"
-        ],
-        "long_term_predictions": [
-            "Risk of developing chronic insomnia based on current patterns",
-            "Expected timeline for improvement with consistent sleep practices",
-            "Likelihood of relapse based on pattern recognition",
-            "Long-term sleep health trajectory with and without intervention"
-        ]
-    }
+def ensure_numeric_data(data_df, feature_columns):
+    """Ensure all columns used for training contain only numeric data."""
+    modified_df = data_df.copy()
+    problematic_columns = []
     
-    # Save the model card as JSON
-    model_card_path = os.path.join(output_dir, 'model_cards', f"{model_name}_card.json")
-    with open(model_card_path, 'w') as f:
-        json.dump(model_card, f, indent=2)
+    for col in feature_columns:
+        if col in modified_df.columns:
+            # Check if column contains any non-numeric values
+            non_numeric = False
+            
+            # For object dtype columns, check if they can be converted to numeric
+            if modified_df[col].dtype == 'object':
+                non_numeric = True
+                print(f"Column {col} has object dtype. Attempting conversion...")
+                
+                # Try to convert to numeric
+                try:
+                    modified_df[col] = pd.to_numeric(modified_df[col], errors='coerce')
+                    non_numeric = False
+                    print(f"Successfully converted {col} to numeric")
+                except Exception as e:
+                    print(f"Failed to convert {col}: {str(e)}")
+                    problematic_columns.append(col)
+                    continue
+            
+            # Even for numeric dtypes, check for NaN or inf values
+            if modified_df[col].isna().any() or (np.isinf(modified_df[col]).any() if np.issubdtype(modified_df[col].dtype, np.number) else False):
+                print(f"Column {col} has NaN or inf values. Filling with zeros...")
+                modified_df[col] = modified_df[col].fillna(0)
+                # Replace inf with large values
+                modified_df[col] = modified_df[col].replace([np.inf, -np.inf], 0)
     
-    logger.info(f"Saved model card to {model_card_path}")
+    # Drop columns that couldn't be converted to numeric
+    if problematic_columns:
+        print(f"Dropping problematic columns: {problematic_columns}")
+        modified_df = modified_df.drop(columns=problematic_columns)
     
-    # Also create a markdown version for better readability
-    markdown_path = os.path.join(output_dir, 'model_cards', f"{model_name}_card.md")
+    # Print a sample of the data to verify
+    for col in modified_df.columns:
+        if col in feature_columns:
+            print(f"Column {col} now has dtype: {modified_df[col].dtype}")
+            if modified_df[col].dtype == 'object':
+                print(f"WARNING: Column {col} is still object type")
     
-    with open(markdown_path, 'w') as f:
-        f.write(f"# {model_name} Model Card\n\n")
-        f.write(f"**Version:** {model_card['version']}\n")
-        f.write(f"**Created:** {model_card['created_at']}\n\n")
-        
-        f.write("## Description\n")
-        f.write(f"{model_card['description']}\n\n")
-        
-        f.write("## Model Information\n")
-        f.write(f"**Type:** {model_card['model_type']}\n")
-        f.write("**Input Features:**\n")
-        for feature in model_card['input_features']:
-            f.write(f"- {feature}\n")
-        f.write(f"**Output:** {model_card['output']}\n\n")
-        
-        f.write("## Performance Metrics\n")
-        for metric, value in model_card['performance_metrics'].items():
-            f.write(f"- **{metric}:** {value}\n")
-        f.write("\n")
-        
-        f.write("## Limitations\n")
-        for limitation in model_card['limitations']:
-            f.write(f"- {limitation}\n")
-        f.write("\n")
-        
-        f.write("## Intended Use\n")
-        for use in model_card['intended_use']:
-            f.write(f"- {use}\n")
-        f.write("\n")
-        
-        f.write("## Training Data Characteristics\n")
-        f.write(f"- **Number of Users:** {model_card['training_data_characteristics']['num_users']}\n")
-        f.write(f"- **Days per User:** {model_card['training_data_characteristics']['days_per_user']}\n")
-        f.write(f"- **Demographics:** {model_card['training_data_characteristics']['user_demographics']}\n")
-        f.write("- **Sleep Patterns:**\n")
-        for pattern in model_card['training_data_characteristics']['sleep_patterns']:
-            f.write(f"  - {pattern}\n")
-        f.write("\n")
-
-        # Add Predictive Capabilities section
-        f.write("## Predictive Capabilities\n\n")
-        
-        f.write("### Sleep Quality Predictions\n")
-        for capability in model_card['predictive_capabilities']['sleep_quality_predictions']:
-            f.write(f"- {capability}\n")
-        f.write("\n")
-        
-        f.write("### Pattern Recognition\n")
-        for capability in model_card['predictive_capabilities']['pattern_recognition']:
-            f.write(f"- {capability}\n")
-        f.write("\n")
-        
-        f.write("### Personalized Insights\n")
-        for capability in model_card['predictive_capabilities']['personalized_insights']:
-            f.write(f"- {capability}\n")
-        f.write("\n")
-        
-        f.write("### Behavior Impact Assessment\n")
-        for capability in model_card['predictive_capabilities']['behavior_impact_assessment']:
-            f.write(f"- {capability}\n")
-        f.write("\n")
-        
-        f.write("### Long-term Predictions\n")
-        for capability in model_card['predictive_capabilities']['long_term_predictions']:
-            f.write(f"- {capability}\n")
-        f.write("\n")
-        
-        f.write("## Hyperparameters\n")
-        for param, value in model_card['hyperparameters'].items():
-            f.write(f"- **{param}:** {value}\n")
-    
-    logger.info(f"Saved markdown model card to {markdown_path}")
+    return modified_df
 
 def main():
     """Main function to train models."""
@@ -286,117 +256,155 @@ def main():
     # Ensure all dataframes have a 'user_id' column set as string
     users_df['user_id'] = users_df['user_id'].astype(str)
     sleep_data_df['user_id'] = sleep_data_df['user_id'].astype(str)
-    wearable_data_df['user_id'] = wearable_data_df['user_id'].astype(str)
+    if wearable_data_df is not None:
+        wearable_data_df['user_id'] = wearable_data_df['user_id'].astype(str)
+    
+    # Check for required columns
+    required_cols = ['user_id', 'date']
+    for col in required_cols:
+        if col not in sleep_data_df.columns:
+            logger.error(f"Required column '{col}' missing from sleep_data_df")
+            
+            # If 'date' is missing but there's a similar column, rename it
+            if col == 'date':
+                date_like_cols = [c for c in sleep_data_df.columns if 'date' in c.lower() or 'day' in c.lower()]
+                if date_like_cols:
+                    logger.info(f"Found potential date column: {date_like_cols[0]}. Renaming to 'date'.")
+                    sleep_data_df['date'] = sleep_data_df[date_like_cols[0]]
+                else:
+                    # Create a synthetic date column if no date column exists
+                    logger.warning("Creating synthetic date column")
+                    base_date = datetime(2024, 1, 1)
+                    user_dates = {}
+                    
+                    for user_id in sleep_data_df['user_id'].unique():
+                        user_rows = sleep_data_df[sleep_data_df['user_id'] == user_id]
+                        user_dates[user_id] = [base_date + timedelta(days=i) for i in range(len(user_rows))]
+                    
+                    sleep_data_df['date'] = sleep_data_df.apply(
+                        lambda row: user_dates[row['user_id']].pop(0), axis=1
+                    )
+            else:
+                raise ValueError(f"Missing required column: {col}")
+    
+    # Ensure date is in datetime format
+    try:
+        sleep_data_df['date'] = pd.to_datetime(sleep_data_df['date'])
+    except Exception as e:
+        logger.error(f"Error converting date column to datetime: {str(e)}")
+        # Try different formats if the standard conversion fails
+        for date_format in ['%Y-%m-%d', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+            try:
+                sleep_data_df['date'] = pd.to_datetime(sleep_data_df['date'], format=date_format)
+                logger.info(f"Successfully converted date using format: {date_format}")
+                break
+            except:
+                continue
     
     # Log original user counts for debugging
     original_user_count = sleep_data_df['user_id'].nunique()
     logger.info(f"Original data: {len(sleep_data_df)} records, {original_user_count} unique users")
     
-    # CRITICAL FIX: Skip the regular preprocessing and do a simplified version 
-    # to avoid the data explosion issue
-    logger.info("Using direct data preparation to avoid preprocessing issues")
+    # Convert date columns in other dataframes if they exist
+    if wearable_data_df is not None and 'date' in wearable_data_df.columns:
+        wearable_data_df['date'] = pd.to_datetime(wearable_data_df['date'], errors='coerce')
     
-    # Create a simplified processed dataset directly from sleep_data 
-    # Preprocess data
-    preprocessor = Preprocessor(config['preprocessing'])
+    if external_factors_df is not None and 'date' in external_factors_df.columns:
+        external_factors_df['date'] = pd.to_datetime(external_factors_df['date'], errors='coerce')
     
-    # Ensure all inputs are DataFrames
-    if not isinstance(users_df, pd.DataFrame):
-        print(f"Warning: users_df is not a DataFrame, converting from {type(users_df)}")
-        if isinstance(users_df, dict):
-            users_df = pd.DataFrame([users_df])
-        else:
-            users_df = pd.DataFrame(users_df)
-
-    if not isinstance(sleep_data_df, pd.DataFrame):
-        print(f"Warning: sleep_data_df is not a DataFrame, converting from {type(sleep_data_df)}")
-        if isinstance(sleep_data_df, dict):
-            sleep_data_df = pd.DataFrame([sleep_data_df])
-        else:
-            sleep_data_df = pd.DataFrame(sleep_data_df)
-
-    if wearable_data_df is not None and not isinstance(wearable_data_df, pd.DataFrame):
-        print(f"Warning: wearable_data_df is not a DataFrame, converting from {type(wearable_data_df)}")
-        if isinstance(wearable_data_df, dict):
-            wearable_data_df = pd.DataFrame([wearable_data_df])
-        else:
-            wearable_data_df = pd.DataFrame(wearable_data_df)
-
-    if external_factors_df is not None and not isinstance(external_factors_df, pd.DataFrame):
-        print(f"Warning: external_factors_df is not a DataFrame, converting from {type(external_factors_df)}")
-        if isinstance(external_factors_df, dict):
-            external_factors_df = pd.DataFrame([external_factors_df])
-        else:
-            external_factors_df = pd.DataFrame(external_factors_df)
+    # Add age_normalized to users_df before preprocessing
+    if 'age' in users_df.columns and 'age_normalized' not in users_df.columns:
+        users_df['age_normalized'] = users_df['age'] / 100.0
+        logger.info("Added age_normalized column to users_df")
     
-    processed_data = preprocessor.process(
-        users_df, 
-        sleep_data_df, 
-        wearable_data_df, 
-        external_factors_df
+    # Pre-merge relevant data to avoid explosion in preprocessor
+    logger.info("Performing controlled merge to avoid data explosion")
+    
+    # Start with sleep data as the base
+    merged_df = sleep_data_df.copy()
+    
+    # Add user fields
+    user_fields = ['user_id', 'age', 'age_normalized', 'gender', 'profession', 'region', 
+                  'profession_category', 'region_category', 'sleep_pattern']
+    available_user_fields = [field for field in user_fields if field in users_df.columns]
+    
+    # Merge with users selectively
+    merged_df = pd.merge(
+        merged_df, 
+        users_df[available_user_fields], 
+        on='user_id', 
+        how='left'
     )
     
-    # Convert date columns to datetime for consistent handling
-    date_columns = ['date', 'bedtime', 'sleep_onset_time', 'wake_time']
-    for col in date_columns:
-        if col in processed_data.columns:
-            processed_data[col] = pd.to_datetime(processed_data[col])
+    # Add wearable data selectively if available
+    if wearable_data_df is not None:
+        # Skip huge array columns
+        skip_cols = ['heart_rate_data', 'movement_data', 'sleep_stage_data']
+        wearable_cols = [col for col in wearable_data_df.columns if col not in skip_cols]
+        
+        # Merge on user_id and date
+        merged_df = pd.merge(
+            merged_df, 
+            wearable_data_df[wearable_cols], 
+            on=['user_id', 'date'], 
+            how='left',
+            suffixes=('', '_wearable')
+        )
+        
+        # Remove duplicate columns with _wearable suffix
+        wearable_suffix_cols = [col for col in merged_df.columns if col.endswith('_wearable')]
+        merged_df = merged_df.drop(columns=wearable_suffix_cols)
     
-    # Add basic sleep calculations if they don't exist
+    # Add basic features that might be missing
+    merged_df = add_missing_features(merged_df)
+    
+    # Verify no data explosion occurred
+    if len(merged_df) > len(sleep_data_df) * 1.1:
+        logger.error(f"Data explosion detected: {len(merged_df)} records vs original {len(sleep_data_df)} records")
+        # Cap to original record count
+        merged_df = merged_df.iloc[:len(sleep_data_df)]
+        logger.info(f"Capped merged data to original record count: {len(merged_df)} records")
+    
+    logger.info(f"Controlled merge complete: {len(merged_df)} records, {merged_df['user_id'].nunique()} unique users")
+    
+    # Skip the regular preprocessor and use our merged data directly
+    processed_data = merged_df
+    
+    # Handle missing values
+    for col in processed_data.columns:
+        if processed_data[col].isna().any():
+            if pd.api.types.is_numeric_dtype(processed_data[col]):
+                processed_data[col] = processed_data[col].fillna(0)
+            else:
+                processed_data[col] = processed_data[col].fillna('unknown')
+    
+    # Convert date columns to datetime
+    date_cols = ['date', 'bedtime', 'sleep_onset_time', 'wake_time', 'out_bed_time']
+    for col in date_cols:
+        if col in processed_data.columns and not pd.api.types.is_datetime64_any_dtype(processed_data[col]):
+            processed_data[col] = pd.to_datetime(processed_data[col], errors='coerce')
+    
+    # Add calculated sleep metrics if missing
     if 'sleep_efficiency' not in processed_data.columns and 'sleep_duration_hours' in processed_data.columns and 'time_in_bed_hours' in processed_data.columns:
         processed_data['sleep_efficiency'] = processed_data['sleep_duration_hours'] / processed_data['time_in_bed_hours']
-        processed_data['sleep_efficiency'] = processed_data['sleep_efficiency'].clip(0, 1)  # Ensure valid range
+        processed_data['sleep_efficiency'] = processed_data['sleep_efficiency'].clip(0, 1)  # Bound within valid range
+        logger.info("Calculated sleep_efficiency from duration and time in bed")
     
-    # Merge with essential wearable data if available
-    if wearable_data_df is not None:
-        # Select only essential columns from wearable data to avoid explosion
-        wearable_cols = ['user_id', 'date', 'device_sleep_duration', 'deep_sleep_percentage', 
-                         'rem_sleep_percentage', 'heart_rate_variability', 'average_heart_rate']
-        wearable_subset = wearable_data_df[
-            [col for col in wearable_cols if col in wearable_data_df.columns]
-        ].copy()
-        
-        # Convert date to datetime for merging
-        if 'date' in wearable_subset.columns:
-            wearable_subset['date'] = pd.to_datetime(wearable_subset['date'])
-        
-        # Merge on user_id and date with left join to maintain sleep_data structure
-        processed_data = pd.merge(
-            processed_data,
-            wearable_subset,
-            on=['user_id', 'date'],
-            how='left',
-            suffixes=('', '_y')
-        )
-
-        # Directly identify and drop the _y columns in one operation
-        y_cols = [col for col in processed_data.columns if col.endswith('_y')]
-        if y_cols:
-            logger.info(f"Dropping columns: {y_cols}")
-            processed_data.drop(columns=y_cols, inplace=True)
-    
-    logger.info(f"Processed data: {len(processed_data)} records, {processed_data['user_id'].nunique()} unique users")
-    
-    # Verify we didn't get data explosion
-    if len(processed_data) > len(sleep_data_df) * 1.1:  # Allow for small increase
-        logger.error(f"Data explosion detected: {len(processed_data)} vs original {len(sleep_data_df)}")
-        # Revert to just using sleep_data_df
-        processed_data = sleep_data_df.copy()
-        logger.info("Reverted to original sleep data")
+    logger.info(f"Processed data ready: {len(processed_data)} records, {processed_data['user_id'].nunique()} unique users")
     
     # Engineer features
     logger.info("Starting feature engineering")
-    feature_engineer = FeatureEngineering(config['feature_engineering'])
+    feature_engineer = FeatureEngineering(config.get('feature_engineering', {}))
     features_df, targets_df = feature_engineer.create_features(processed_data)
     
     # Ensure user_id is present in features_df and targets_df
     if 'user_id' not in features_df.columns and 'user_id' in processed_data.columns:
         logger.info("Adding user_id to features_df from processed_data")
-        features_df['user_id'] = processed_data['user_id'].values
+        features_df['user_id'] = processed_data['user_id'].values[:len(features_df)]
     
     if 'user_id' not in targets_df.columns and 'user_id' in processed_data.columns:
         logger.info("Adding user_id to targets_df from processed_data")
-        targets_df['user_id'] = processed_data['user_id'].values
+        targets_df['user_id'] = processed_data['user_id'].values[:len(targets_df)]
     
     # Log feature engineering results
     logger.info(f"Features: {len(features_df)} records, {features_df['user_id'].nunique() if 'user_id' in features_df.columns else 0} unique users")
@@ -404,7 +412,7 @@ def main():
     
     # Ensure date is present in features_df
     if 'date' not in features_df.columns and 'date' in processed_data.columns:
-        features_df['date'] = processed_data['date']
+        features_df['date'] = processed_data['date'].values[:len(features_df)]
     
     # Create a combined dataframe for model training
     combined_data = pd.DataFrame()
@@ -442,115 +450,60 @@ def main():
         combined_data['sleep_efficiency'] = targets_df['sleep_quality']
     elif 'sleep_efficiency' in processed_data.columns:
         # Get sleep_efficiency directly from processed_data if available
-        combined_data['sleep_efficiency'] = processed_data['sleep_efficiency']
+        combined_data['sleep_efficiency'] = processed_data['sleep_efficiency'].values[:len(combined_data)]
     
     # Add a column to track synthetic data
     combined_data['is_synthetic'] = False
     
-    # Log final combined dataset info
-    logger.info(f"Combined data: {len(combined_data)} records, {combined_data['user_id'].nunique()} unique users")
-    logger.info(f"Final columns: {combined_data.columns.tolist()}")
-    
-    # Data Augmentation Section
-    # Check if we have enough data per user for sequence-based modeling
-    user_counts = combined_data.groupby('user_id').size()
-    logger.info(f"Records per user before augmentation: min={user_counts.min()}, max={user_counts.max()}, avg={user_counts.mean():.2f}")
-    
-    # If we don't have enough data per user, generate synthetic data
-    min_required_samples = 8  # Need at least sequence_length (7) + 1
-    
-    # Find users who need synthetic data
-    users_needing_data = []
-    for user_id, count in user_counts.items():
-        if count < min_required_samples:
-            users_needing_data.append(user_id)
-    
-    if users_needing_data:
-        logger.warning(f"Not enough data for {len(users_needing_data)} users (minimum required: {min_required_samples})")
-        logger.info(f"Generating synthetic data for {len(users_needing_data)} users")
-        
-        # Create a new dataframe for synthetic data
-        synthetic_data_rows = []
-        
-        # Process only users who need synthetic data
-        for user_id in users_needing_data:
-            # Get data for this user
-            group = combined_data[combined_data['user_id'] == user_id]
-            
-            # How many additional samples we need
-            additional_needed = min_required_samples - len(group)
-            logger.info(f"Generating {additional_needed} synthetic entries for user {user_id}")
-            
-            # Get base values for this user
-            base_record = group.iloc[0].copy()
-            
-            # Determine the base date for this user
-            if isinstance(base_record['date'], pd.Timestamp):
-                base_date = base_record['date']
-            else:
-                try:
-                    base_date = pd.to_datetime(base_record['date'])
-                except:
-                    base_date = datetime(2024, 1, 1)
-            
-            # Generate additional entries with slight variations
-            for i in range(additional_needed):
-                new_record = {}
-                
-                # Use the same user_id
-                new_record['user_id'] = user_id
-                
-                # Mark as synthetic
-                new_record['is_synthetic'] = True
-                
-                # Vary the date (one day per new record, going backwards from the original date)
-                new_record['date'] = base_date - timedelta(days=i+1)
-                
-                # Add sleep_efficiency with small random variations
-                if 'sleep_efficiency' in group.columns:
-                    base_efficiency = group['sleep_efficiency'].iloc[0]
-                    # Add small random variation (±20%)
-                    variation = np.random.uniform(-0.2, 0.2)
-                    new_efficiency = base_efficiency * (1 + variation)
-                    # Keep within valid range [0, 1]
-                    new_record['sleep_efficiency'] = max(0, min(1, new_efficiency))
-                
-                # Add variations to all other features
-                for col in group.columns:
-                    if col not in ['user_id', 'date', 'sleep_efficiency', 'is_synthetic']:
-                        if pd.api.types.is_numeric_dtype(group[col]):
-                            # Add small random variation to numeric features (±30%)
-                            base_value = group[col].iloc[0]
-                            variation = np.random.uniform(-0.3, 0.3)
-                            new_value = base_value * (1 + variation)
-                            new_record[col] = new_value
-                        else:
-                            # For non-numeric columns, just copy the original value
-                            new_record[col] = group[col].iloc[0]
-                
-                # Add the synthetic record
-                synthetic_data_rows.append(new_record)
-        
-        # Convert to DataFrame and combine with original data
-        if synthetic_data_rows:
-            synthetic_df = pd.DataFrame(synthetic_data_rows)
-            logger.info(f"Created {len(synthetic_df)} synthetic data points")
-            
-            # Combine with original data
-            combined_data = pd.concat([combined_data, synthetic_df], ignore_index=True)
-            
-            # Recheck user counts
-            user_counts = combined_data.groupby('user_id').size()
-            logger.info(f"Records per user after augmentation: min={user_counts.min()}, max={user_counts.max()}, avg={user_counts.mean():.2f}")
+    # Verify age_normalized exists in the combined data
+    if 'age_normalized' not in combined_data.columns:
+        if 'age' in combined_data.columns:
+            combined_data['age_normalized'] = combined_data['age'] / 100.0
+            logger.info("Added missing age_normalized to combined_data from age")
         else:
-            logger.info("No synthetic data needed to be generated")
-    else:
-        logger.info("No users need synthetic data generation")
+            # Use a default value
+            combined_data['age_normalized'] = 0.35  # Default age 35
+            logger.warning("Added default age_normalized as age column is missing")
     
-    # Ensure the combined data is properly sorted for sequence creation
-    combined_data = combined_data.sort_values(['user_id', 'date']).reset_index(drop=True)
+    # Check all features required by the model
+    # From the config model features list - include all the ones that might be required
+    model_features = config.get('sleep_quality_model', {}).get('features', [
+        'sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes',
+        'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes',
+        'heart_rate_variability', 'average_heart_rate', 'age_normalized',
+        'profession_healthcare', 'profession_tech', 'profession_service', 'profession_education',
+        'profession_office', 'profession_other', 'season_Winter', 'season_Spring', 'season_Summer', 'season_Fall'
+    ])
     
-    # Instead of random indices, split by users
+    # Ensure all required features exist
+    for feature in model_features:
+        if feature not in combined_data.columns:
+            logger.warning(f"Required feature '{feature}' missing. Adding with default value.")
+            if feature.startswith('profession_'):
+                # For profession features, set to 0 (not this profession)
+                combined_data[feature] = 0
+            elif feature.startswith('season_'):
+                # For season features, set based on current date or default to Spring
+                if 'date' in combined_data.columns:
+                    season = combined_data['date'].dt.month.apply(lambda m: 'Winter' if m in [12, 1, 2] else
+                                                                'Spring' if m in [3, 4, 5] else
+                                                                'Summer' if m in [6, 7, 8] else 'Fall')
+                    combined_data[feature] = (season == feature.replace('season_', '')).astype(float)
+                else:
+                    # Default to Spring
+                    combined_data[feature] = 1.0 if feature == 'season_Spring' else 0.0
+            elif feature in ['deep_sleep_percentage', 'rem_sleep_percentage']:
+                # Default reasonable values for sleep stages
+                combined_data[feature] = 0.2  # 20% for each sleep stage
+            elif feature in ['sleep_duration_hours']:
+                combined_data[feature] = 7.0  # Default 7 hours
+            elif feature in ['sleep_efficiency']:
+                combined_data[feature] = 0.85  # Default 85% efficiency
+            else:
+                # Default to 0 for other features
+                combined_data[feature] = 0.0
+    
+    # Split data into train/validation (80/20)
     unique_users = combined_data['user_id'].unique()
     train_users, val_users = train_test_split(
         unique_users, 
@@ -560,50 +513,32 @@ def main():
 
     train_data = combined_data[combined_data['user_id'].isin(train_users)].reset_index(drop=True)
     val_data = combined_data[combined_data['user_id'].isin(val_users)].reset_index(drop=True)
+
+    logger.info(f"Split data into {len(train_data)} training samples and {len(val_data)} validation samples")
+
+    # Add this new code here
+    logger.info("Ensuring all data is numeric before training...")
+    feature_columns = [col for col in train_data.columns if col not in ['user_id', 'date', 'is_synthetic']]
+    train_data = ensure_numeric_data(train_data, feature_columns)
+    val_data = ensure_numeric_data(val_data, feature_columns)
     
     logger.info(f"Split data into {len(train_data)} training samples and {len(val_data)} validation samples")
     
     # Create and train sleep quality model
-    sleep_quality_config = config['sleep_quality_model']
-    sleep_quality_model = SleepQualityModel()
+    sleep_quality_config = config.get('sleep_quality_model', {})
+    sleep_quality_model = SleepQualityModel(args.config)
     
     logger.info("Training sleep quality model...")
     
-    # Check if we still have potential sequence creation issues after augmentation
-    min_required_samples = 8  # sequence_length + 1
-    user_counts_train = train_data.groupby('user_id').size()
-    user_counts_val = val_data.groupby('user_id').size()
-    
-    logger.info(f"User data counts in training set: min={user_counts_train.min()}, max={user_counts_train.max()}")
-    logger.info(f"User data counts in validation set: min={user_counts_val.min()}, max={user_counts_val.max()}")
-    
-    # Determine if we should use sequence-based or fallback training
-    use_fallback = False
-    
-    if user_counts_train.min() < min_required_samples:
-        logger.warning(f"Training set still has users with fewer than {min_required_samples} records")
-        use_fallback = True
-    
-    if user_counts_val.min() < min_required_samples:
-        logger.warning(f"Validation set still has users with fewer than {min_required_samples} records")
-        use_fallback = True
-    
-    # Train the model using the appropriate method
+    # Train the model (with fallback to handle limited data)
     try:
-        if use_fallback:
-            logger.info("Using fallback (non-sequence) training method")
-            # Combine train and validation data for the fallback method
-            combined_train_val = pd.concat([train_data, val_data], ignore_index=True)
-            training_history = sleep_quality_model.train_with_limited_data(combined_train_val)
-        else:
-            logger.info("Using sequence-based LSTM training method")
-            training_history = sleep_quality_model.train(train_data, val_data)
+        training_history = sleep_quality_model.train(train_data, val_data)
+        logger.info("Sleep quality model training completed successfully")
     except Exception as e:
-        logger.error(f"Error during model training: {str(e)}")
-        # Try fallback as a last resort if standard training fails
-        logger.info("Attempting fallback training method after sequence training failure")
-        combined_train_val = pd.concat([train_data, val_data], ignore_index=True)
-        training_history = sleep_quality_model.train_with_limited_data(combined_train_val)
+        logger.warning(f"Error during sequence-based training: {str(e)}")
+        logger.info("Falling back to limited data training method")
+        training_history = sleep_quality_model.train_with_limited_data(combined_data)
+        logger.info("Fallback training completed successfully")
     
     # Extract metrics from training history
     metrics = {
@@ -617,19 +552,34 @@ def main():
     sleep_quality_model.save(model_path)
     logger.info(f"Saved sleep quality model to {model_path}")
     
-    # Create model card
+    # Update config with training details for model card
     sleep_quality_config.update({
         'num_users': len(users_df),
         'days_per_user': len(sleep_data_df) // len(users_df) if len(users_df) > 0 else 0,
         'input_features': training_history['features']
     })
     
-    save_model_card(
-        'sleep_quality',
-        sleep_quality_config,
-        metrics,
-        args.output_dir
-    )
+    # Generate model card using the method in SleepQualityModel
+    model_card_path = os.path.join(args.output_dir, 'model_card', 'sleep_quality_model.json')
+    performance_metrics = {
+        'mse': metrics['final_val_loss'],
+        'rmse': np.sqrt(metrics['final_val_loss']),
+        'features': metrics['features_used']
+    }
+    
+    try:
+        sleep_quality_model.generate_model_card(
+            model_card_path,
+            performance_metrics=performance_metrics,
+            training_data_description={
+                'num_users': sleep_quality_config['num_users'],
+                'num_records': len(sleep_data_df),
+                'date_range': f"{sleep_data_df['date'].min()} to {sleep_data_df['date'].max()}"
+            }
+        )
+        logger.info(f"Generated model card at {model_card_path}")
+    except Exception as e:
+        logger.error(f"Error generating model card: {str(e)}")
     
     # Train transfer learning model if configured
     if 'transfer_learning' in config and config.get('transfer_learning', {}).get('enabled', False):
@@ -637,44 +587,33 @@ def main():
         
         logger.info("Training transfer learning model...")
         transfer_model = TransferLearning(
-            base_model=sleep_quality_model,
-            **transfer_learning_config
+            config_path=args.config
         )
+        
+        # Load the base model
+        transfer_model.load_base_model(model_path)
         
         # For demonstration, we'll use a subset of users for transfer learning
-        transfer_users = users_df['user_id'].sample(
-            n=min(transfer_learning_config.get('min_user_samples', 5), len(users_df)),
-            random_state=args.seed
+        transfer_users = np.random.choice(
+            users_df['user_id'],
+            size=min(transfer_learning_config.get('min_user_samples', 5), len(users_df)),
+            replace=False
         ).tolist()
         
-        transfer_data = combined_data[combined_data['user_id'].isin(transfer_users)]
-        
-        # Split transfer data into train/val
-        transfer_train, transfer_val = train_test_split(
-            transfer_data,
-            test_size=0.2,
-            random_state=args.seed
-        )
-        
-        transfer_metrics = transfer_model.train(transfer_train, transfer_val)
-        
-        # Save the transfer learning model
-        transfer_model_path = os.path.join(args.output_dir, 'transfer_learning_model')
-        transfer_model.save(transfer_model_path)
-        logger.info(f"Saved transfer learning model to {transfer_model_path}")
-        
-        # Create model card for transfer learning model
-        transfer_learning_config.update({
-            'num_users': len(transfer_users),
-            'input_features': training_history['features']
-        })
-        
-        save_model_card(
-            'transfer_learning',
-            transfer_learning_config,
-            transfer_metrics,
-            args.output_dir
-        )
+        # Adapt model to each user
+        for user_id in transfer_users:
+            user_data = combined_data[combined_data['user_id'] == user_id]
+            if len(user_data) >= transfer_learning_config['hyperparameters'].get('min_user_samples', 5):
+                logger.info(f"Adapting model for user: {user_id}")
+                try:
+                    history = transfer_model.adapt_to_user(user_id, user_data)
+                    
+                    # Save user model
+                    transfer_model.save_user_model(user_id, os.path.join(args.output_dir, 'user_models/model'))
+                except Exception as e:
+                    logger.error(f"Error adapting model for user {user_id}: {str(e)}")
+            else:
+                logger.warning(f"Not enough data for user {user_id} to perform transfer learning")
     
     logger.info("Model training complete!")
 

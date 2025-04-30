@@ -13,8 +13,8 @@ from datetime import datetime
 # Add the src directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.models.enhanced_sleep_score_analytics import EnhancedSleepScoreAnalytics
-from src.data_processing.preprocessing import Preprocessor
+from src.core.models.enhanced_sleep_score_analytics import EnhancedSleepScoreAnalytics
+from src.core.data_processing.preprocessing import Preprocessor
 
 def main():
     """Run the enhanced sleep score analytics on sleep data"""

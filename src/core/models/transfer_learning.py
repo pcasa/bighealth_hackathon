@@ -8,7 +8,7 @@ import json
 import yaml
 from datetime import datetime
 
-from src.models.sleep_quality import SleepQualityLSTM
+from src.core.models.sleep_quality import SleepQualityLSTM
 
 class TransferLearning:
     def __init__(self, config_path='config/model_config.yaml'):

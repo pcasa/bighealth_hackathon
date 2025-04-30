@@ -23,9 +23,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.data_generation.user_generator import UserGenerator
 from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
-from src.data_processing.preprocessing import Preprocessor
-from src.models.recommendation_engine import SleepRecommendationEngine
-from src.models.sleep_quality import SleepQualityModel
+from src.core.data_processing.preprocessing import Preprocessor
+from src.core.models.recommendation_engine import SleepRecommendationEngine
+from src.core.models.sleep_quality import SleepQualityModel
 from src.data_generation.base_generator import BaseDataGenerator
 from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator

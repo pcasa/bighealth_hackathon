@@ -1,8 +1,8 @@
 # Integration with the existing SleepScoreAnalytics class
 
 import os
-from src.models.sleep_score_analytics import SleepScoreAnalytics
-from src.models.trend_analysis_extension import TrendAnalysisExtension
+from src.core.models.sleep_score_analytics import SleepScoreAnalytics
+from src.core.models.trend_analysis_extension import TrendAnalysisExtension
 
 # Create extension class and inherit from SleepScoreAnalytics
 class EnhancedSleepScoreAnalytics(SleepScoreAnalytics):

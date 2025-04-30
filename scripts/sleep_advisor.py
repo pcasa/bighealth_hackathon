@@ -17,9 +17,9 @@ from datetime import datetime, timedelta
 # Add the src directory to the path so we can import our modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.data_processing.preprocessing import Preprocessor
-from src.models.sleep_quality import SleepQualityModel
-from src.models.recommendation_engine import SleepRecommendationEngine
+from src.core.data_processing.preprocessing import Preprocessor
+from src.core.models.sleep_quality import SleepQualityModel
+from src.core.models.recommendation_engine import SleepRecommendationEngine
 
 # Set up logging
 logging.basicConfig(

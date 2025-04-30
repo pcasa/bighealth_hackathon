@@ -6,8 +6,8 @@ from datetime import datetime
 import logging
 from multiprocessing import Pool, cpu_count
 
-from src.data_processing.preprocessing import DataPreprocessor
-from src.data_processing.feature_engineering import FeatureEngineering
+from src.core.data_processing.preprocessing import DataPreprocessor
+from src.core.data_processing.feature_engineering import FeatureEngineering
 
 class BatchProcessor:
     def __init__(self, batch_size=1000, checkpoint_dir='data/checkpoints'):

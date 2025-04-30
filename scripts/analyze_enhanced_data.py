@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime, timedelta
 from src.utils.constants import profession_categories
+from src.data_generation.base_generator import BaseDataGenerator
+
 
 def parse_args():
     """Parse command line arguments."""

@@ -2,7 +2,7 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from src.models.improved_sleep_score import ImprovedSleepScoreCalculator
+from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
 
 
 # Set up logging

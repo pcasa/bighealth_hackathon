@@ -14,9 +14,9 @@ from scripts.sleep_advisor import get_user_sleep_data
 # Add the src directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.recommendation_engine import SleepRecommendationEngine
-from models.sleep_quality import SleepQualityModel
-from data_processing.preprocessing import Preprocessor
+from src.core.models.recommendation_engine import SleepRecommendationEngine
+from src.core.models.sleep_quality import SleepQualityModel
+from src.core.data_processing.preprocessing import Preprocessor
 
 # Import our new user profile routes
 from api.user_profile_routes import router as user_router

@@ -25,9 +25,9 @@ from datetime import datetime
 # Add the src directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.data_processing.preprocessing import Preprocessor
-from src.data_processing.feature_engineering import FeatureEngineering
-from src.models.sleep_quality import SleepQualityModel
+from src.core.data_processing.preprocessing import Preprocessor
+from src.core.data_processing.feature_engineering import FeatureEngineering
+from src.core.models.sleep_quality import SleepQualityModel
 
 # Set up logging
 logging.basicConfig(
