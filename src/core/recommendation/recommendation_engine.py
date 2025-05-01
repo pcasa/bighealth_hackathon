@@ -12,6 +12,7 @@ from src.utils.constants import profession_categories
 from src.core.models.data_models import ProgressAnalysis, SleepMetrics, Recommendation
 
 
+
 class SleepRecommendationEngine:
     def __init__(self, config_path='config/recommendations_config.yaml'):
         """Initialize the recommendation engine with templates and selection logic"""

@@ -1,6 +1,6 @@
 # Sleep Quality Prediction Model v1.0
 
-**Created:** 2025-04-30
+**Created:** 2025-05-01
 
 ## Description
 Sequence-based deep learning model for sleep quality analysis and prediction
@@ -42,7 +42,7 @@ LSTM Neural Network
 ```json
 {
   "user_id": "sample_user_01",
-  "date": "2025-04-29",
+  "date": "2025-04-30",
   "predicted_sleep_efficiency": 0.87,
   "prediction_confidence": 0.85,
   "sleep_score": 83,
@@ -141,8 +141,8 @@ Analysis types:
 - Impact assessment by demographic factor
 
 ## Performance Metrics
-- mse: 0.0001561208046041429
-- rmse: 0.012494831115471025
+- mse: 0.05727999657392502
+- rmse: 0.23933239766885933
 - features: ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate', 'age_normalized', 'profession_healthcare', 'profession_tech', 'profession_service', 'profession_education', 'profession_office', 'profession_other', 'season_Winter', 'season_Spring', 'season_Summer', 'season_Fall']
 
 ## Limitations

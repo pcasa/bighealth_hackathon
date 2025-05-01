@@ -17,6 +17,7 @@ from src.core.models.sleep_quality import SleepQualityModel
 from src.core.data_processing.preprocessing import Preprocessor
 from src.utils.constants import profession_categories
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
+from src.core.scoring.sleep_score import SleepScoreCalculator
 
 class AnalysisDimension(str, Enum):
     """Dimensions for sleep score analysis"""
@@ -130,12 +131,11 @@ class SleepScoreAnalytics:
     
     def calculate_sleep_scores(self, data):
         """Calculate sleep scores for each record"""
-        # Create a copy to avoid modifying the original
         scored_data = data.copy()
         
-        # Add sleep score column
+        # Add sleep score column using the centralized calculator
         scored_data['sleep_score'] = scored_data.apply(
-            lambda row: self._calculate_score_for_row(row),
+            lambda row: self.sleep_score_calculator.calculate_score(row.to_dict()).total_score,
             axis=1
         )
         

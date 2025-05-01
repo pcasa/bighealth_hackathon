@@ -51,31 +51,31 @@ sleep_patterns:
     sleep_duration_hours: [6.5, 8.5]
     awakenings_count: [0, 2]
     awakening_duration_minutes: [1, 10]
-    sleep_efficiency: [0.85, 0.95]
-    subjective_rating_range: [6, 10]
+    sleep_efficiency: [0.80, 0.95]  # More realistic efficiency range
+    subjective_rating_range: [5, 9]  # Adjusted rating range
   
   insomnia:
     sleep_onset_minutes: [30, 120]
     sleep_duration_hours: [4, 6.5]
     awakenings_count: [3, 7]
     awakening_duration_minutes: [10, 60]
-    sleep_efficiency: [0.6, 0.8]
-    subjective_rating_range: [2, 7]
+    sleep_efficiency: [0.45, 0.75]  # Much lower efficiency range for insomnia
+    subjective_rating_range: [1, 6]  # Lower ratings for insomnia
   
   shift_worker:
     day_sleep_probability: 0.8
     sleep_duration_hours: [5, 7]
     awakenings_count: [2, 5]
     awakening_duration_minutes: [5, 30]
-    sleep_efficiency: [0.7, 0.85]
-    subjective_rating_range: [4, 8]
-    # Add profession-specific modifiers
+    sleep_efficiency: [0.60, 0.85]  # Lower efficiency for shift workers
+    subjective_rating_range: [3, 7]  # Lower ratings for shift workers
+    # Profession-specific modifiers
     profession_modifiers:
       healthcare:
-        sleep_efficiency: -0.05
+        sleep_efficiency: [-0.1, 0]  # Lower efficiency for healthcare shift workers
         awakenings_count: [3, 6]
       transit:
-        sleep_efficiency: -0.03
+        sleep_efficiency: [-0.08, 0]
         day_sleep_probability: 0.7
   
   oversleeper:
@@ -83,21 +83,24 @@ sleep_patterns:
     sleep_duration_hours: [8, 10]
     awakenings_count: [1, 3]
     awakening_duration_minutes: [5, 15]
-    sleep_efficiency: [0.75, 0.9]
-    subjective_rating_range: [5, 9]
+    sleep_efficiency: [0.70, 0.90]  # Lower efficiency for oversleepers
+    subjective_rating_range: [4, 8]  # Wider rating range
   
   variable:
     bedtime_variance_hours: [1, 3]
     sleep_duration_variance_hours: [1, 3]
     awakening_variance: [0, 5]
-    subjective_rating_range: [3, 9]
+    subjective_rating_range: [2, 8]  # Wider rating range with lower minimum
+    sleep_efficiency: [0.55, 0.88]  # Much wider efficiency range for variable sleepers
     # Regional patterns (some regions have more variance)
     region_modifiers:
       europe:
         bedtime_variance_hours: [0.5, 2]
+        sleep_efficiency: [-0.05, 0.02]  # Small efficiency adjustment for European variable sleepers
       asia:
         bedtime_variance_hours: [0.5, 1.5]
-
+        sleep_efficiency: [0, 0.05]  # Small positive efficiency adjustment for Asian variable sleepers
+        
 # Wearable device parameters
 device_parameters:
   apple_watch:

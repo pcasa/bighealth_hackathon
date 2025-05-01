@@ -62,16 +62,26 @@ class WearableDataGenerator(BaseDataGenerator):
             # Return empty DataFrame as fallback
             return pd.DataFrame()
     
+    # Fix for the WearableDataGenerator's _generate_record_wearable_data method
+
     def _generate_record_wearable_data(self, record):
-        """Generate wearable data for a single sleep record"""
+        """Generate wearable data for a single sleep record with division by zero protection"""
         device_type = record['device_type']
         device_params = self.device_params[device_type]
         device_profile = self.device_config[device_type]
         
         # Convert string times to datetime objects
-        bedtime = datetime.strptime(record['bedtime'], '%Y-%m-%d %H:%M:%S')
-        sleep_onset = datetime.strptime(record['sleep_onset_time'], '%Y-%m-%d %H:%M:%S')
-        wake_time = datetime.strptime(record['wake_time'], '%Y-%m-%d %H:%M:%S')
+        try:
+            bedtime = datetime.strptime(record['bedtime'], '%Y-%m-%d %H:%M:%S')
+            sleep_onset = datetime.strptime(record['sleep_onset_time'], '%Y-%m-%d %H:%M:%S')
+            wake_time = datetime.strptime(record['wake_time'], '%Y-%m-%d %H:%M:%S')
+        except (ValueError, TypeError) as e:
+            print(f"Error parsing datetime: {e}")
+            # Provide default values if datetime parsing fails
+            current_date = datetime.now()
+            bedtime = current_date - timedelta(hours=8)
+            sleep_onset = bedtime + timedelta(minutes=20)
+            wake_time = current_date
         
         # Add device measurement variance with the base class noise generation
         bedtime_variance_minutes = self.generate_time_based_noise(0, 0.5)  # ~5 minutes standard deviation
@@ -87,31 +97,61 @@ class WearableDataGenerator(BaseDataGenerator):
         device_sleep_onset = sleep_onset + timedelta(minutes=sleep_onset_variance)
         device_wake_time = wake_time + timedelta(minutes=wake_time_variance)
         
-        # Generate sleep stages data
-        sleep_stages = self._generate_sleep_stages(
-            device_type, device_sleep_onset, device_wake_time, record['sleep_duration_hours'], 
-            record.get('profession_category', None)  # Pass profession if available
-        )
+        # CRITICAL FIX: Ensure device_sleep_onset is before device_wake_time
+        if device_sleep_onset >= device_wake_time:
+            # If times are invalid, adjust wake time to be after sleep onset
+            device_wake_time = device_sleep_onset + timedelta(minutes=30)
+        
+        # Calculate sleep duration with division by zero protection
+        device_sleep_duration = max(0.1, (device_wake_time - device_sleep_onset).total_seconds() / 3600)
+        
+        # CRITICAL FIX: Handle special case for no_sleep nights
+        if 'no_sleep' in record and record['no_sleep']:
+            # For no sleep nights, generate special sleep stage data
+            sleep_stages = {
+                'deep': 0.0,
+                'light': 0.1,  # Some light sleep even on "no sleep" nights
+                'rem': 0.0,
+                'awake': 0.9,  # Mostly awake
+                'cycles': 0,
+                'sequence': ['awake'] * int((device_wake_time - device_sleep_onset).total_seconds() / 60)
+            }
+        else:
+            # Normal sleep stage generation
+            sleep_stages = self._generate_sleep_stages(
+                device_type, device_sleep_onset, device_wake_time, device_sleep_duration, 
+                record.get('profession_category', None)  # Pass profession if available
+            )
         
         # Generate heart rate data
         heart_rate_data = self._generate_heart_rate_data(
             device_type, device_profile, device_bedtime, device_wake_time, 
-            record['sleep_efficiency'], record['awakenings_count']
+            # CRITICAL FIX: Handle missing or zero sleep_efficiency
+            record.get('sleep_efficiency', 0.7) or 0.7,  # Default to 0.7 if missing or zero
+            record.get('awakenings_count', 0) or 0  # Default to 0 if missing or None
         )
         
         # Generate movement data
         movement_data = self._generate_movement_data(
             device_type, device_profile, device_sleep_onset, device_wake_time,
-            record['awakenings_count'], record['total_awake_minutes']
+            record.get('awakenings_count', 0) or 0,  # Default to 0 if missing or None
+            record.get('total_awake_minutes', 0) or 0  # Default to 0 if missing or None
         )
         
-        # Calculate device-specific metrics
-        hrv = self._calculate_hrv(device_type, heart_rate_data, record['sleep_efficiency'])
+        # Calculate device-specific metrics with division by zero protection
+        # CRITICAL FIX: Add safety checks for heart_rate_data
+        if heart_rate_data and len(heart_rate_data) > 1:
+            hrv = self._calculate_hrv(device_type, heart_rate_data, 
+                                    record.get('sleep_efficiency', 0.7) or 0.7)
+        else:
+            # Default HRV if heart rate data is invalid
+            hrv = 45.0
         
         # Blood oxygen if device supports it
         blood_oxygen = None
         if 'blood_oxygen' in device_profile['data_fields']:
-            blood_oxygen = self._generate_blood_oxygen(record['sleep_efficiency'])
+            blood_oxygen = self._generate_blood_oxygen(
+                record.get('sleep_efficiency', 0.7) or 0.7)
         
         # Get season using base class method (if date available)
         season = None
@@ -125,25 +165,25 @@ class WearableDataGenerator(BaseDataGenerator):
         
         return {
             'user_id': record['user_id'],
-            'date': record['date'],
+            'date': record.get('date', datetime.now().strftime('%Y-%m-%d')),
             'device_type': device_type,
             'device_bedtime': device_bedtime.strftime('%Y-%m-%d %H:%M:%S'),
             'device_sleep_onset': device_sleep_onset.strftime('%Y-%m-%d %H:%M:%S'),
             'device_wake_time': device_wake_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'device_sleep_duration': (device_wake_time - device_sleep_onset).total_seconds() / 3600,
+            'device_sleep_duration': device_sleep_duration,  # Now guaranteed to be > 0
             'deep_sleep_percentage': sleep_stages['deep'],
             'light_sleep_percentage': sleep_stages['light'],
             'rem_sleep_percentage': sleep_stages['rem'],
             'awake_percentage': sleep_stages['awake'],
             'sleep_cycles': sleep_stages['cycles'],
-            'average_heart_rate': np.mean(heart_rate_data),
-            'min_heart_rate': np.min(heart_rate_data),
-            'max_heart_rate': np.max(heart_rate_data),
+            'average_heart_rate': np.mean(heart_rate_data) if heart_rate_data else 60,
+            'min_heart_rate': np.min(heart_rate_data) if heart_rate_data else 50,
+            'max_heart_rate': np.max(heart_rate_data) if heart_rate_data else 70,
             'heart_rate_variability': hrv,
-            'movement_intensity': np.mean(movement_data),
+            'movement_intensity': np.mean(movement_data) if movement_data else 0.1,
             'blood_oxygen': blood_oxygen,
-            'heart_rate_data': heart_rate_data,
-            'movement_data': movement_data,
+            'heart_rate_data': heart_rate_data or [60, 60],  # Default if missing
+            'movement_data': movement_data or [0.1, 0.1],    # Default if missing
             'sleep_stage_data': sleep_stages['sequence'],
             'season': season,
             'profession_category': record.get('profession_category', None),
@@ -151,7 +191,14 @@ class WearableDataGenerator(BaseDataGenerator):
         }
     
     def _generate_sleep_stages(self, device_type, sleep_onset, wake_time, sleep_duration, profession=None):
-        """Generate sleep stage percentages and sequence with profession-specific adjustments"""
+        """Generate sleep stage percentages and sequence with profession-specific adjustments and division by zero protection"""
+        # CRITICAL: Ensure sleep_duration is positive
+        sleep_duration = max(0.1, sleep_duration)  # Minimum of 0.1 hour to prevent division by zero
+        
+        # CRITICAL: Ensure wake_time is after sleep_onset
+        if wake_time <= sleep_onset:
+            wake_time = sleep_onset + timedelta(minutes=30)  # Ensure at least 30 minutes of sleep
+        
         # Base percentages for a normal sleeper
         base_deep = 0.20
         base_light = 0.50
@@ -206,6 +253,17 @@ class WearableDataGenerator(BaseDataGenerator):
         
         # Normalize to ensure they sum to 1
         total = deep + light + rem + awake
+        
+        # CRITICAL: Prevent division by zero
+        if total == 0:
+            # If for some reason all values are zero, use default proportions
+            deep = 0.20
+            light = 0.50
+            rem = 0.25
+            awake = 0.05
+            total = 1.0
+        
+        # Now we can safely divide
         deep /= total
         light /= total
         rem /= total
@@ -216,25 +274,58 @@ class WearableDataGenerator(BaseDataGenerator):
         cycles = sleep_duration / cycle_length_hours
         
         # Generate a simplified sleep stage sequence
-        total_minutes = int((wake_time - sleep_onset).total_seconds() / 60)
-        sequence = self._generate_stage_sequence(
-            total_minutes, deep, light, rem, awake, cycles
-        )
+        # CRITICAL: Ensure total_minutes is positive
+        total_minutes = max(1, int((wake_time - sleep_onset).total_seconds() / 60))
+        
+        try:
+            sequence = self._generate_stage_sequence(
+                total_minutes, deep, light, rem, awake, cycles
+            )
+        except Exception as e:
+            # Fallback if sequence generation fails
+            print(f"Error generating sleep stage sequence: {e}. Using fallback.")
+            # Create a simple fallback sequence
+            sequence = ['light'] * min(30, total_minutes)
+            if total_minutes > 30:
+                sequence.extend(['deep'] * min(60, total_minutes - 30))
+            if total_minutes > 90:
+                sequence.extend(['rem'] * min(30, total_minutes - 90))
+            if total_minutes > 120:
+                # Fill the rest with a pattern
+                remaining = total_minutes - 120
+                pattern = ['light', 'deep', 'rem', 'light'] * ((remaining // 4) + 1)
+                sequence.extend(pattern[:remaining])
         
         return {
             'deep': deep,
             'light': light,
             'rem': rem,
             'awake': awake,
-            'cycles': np.floor(cycles),
+            'cycles': max(0, np.floor(cycles)),  # Ensure non-negative
             'sequence': sequence
         }
-    
+
     def _generate_stage_sequence(self, total_minutes, deep_pct, light_pct, rem_pct, awake_pct, cycles):
-        """Generate a minute-by-minute sequence of sleep stages"""
+        """Generate a minute-by-minute sequence of sleep stages with error handling"""
+        # CRITICAL: Safety checks for inputs
+        total_minutes = max(1, total_minutes)  # Ensure positive
+        cycles = max(0.1, cycles)  # Ensure positive
+        
+        # Ensure percentages are valid (0-1 range)
+        deep_pct = max(0.01, min(0.99, deep_pct))
+        light_pct = max(0.01, min(0.99, light_pct))
+        rem_pct = max(0.01, min(0.99, rem_pct))
+        awake_pct = max(0.01, min(0.99, awake_pct))
+        
+        # Renormalize to ensure they sum to 1
+        total = deep_pct + light_pct + rem_pct + awake_pct
+        deep_pct /= total
+        light_pct /= total
+        rem_pct /= total
+        awake_pct /= total
+        
         # Simplified model: Start with light sleep, then cycles of deep->light->REM
         # with occasional awakenings
-        
         stages = []
         cycle_minutes = total_minutes / cycles
         
@@ -246,14 +337,18 @@ class WearableDataGenerator(BaseDataGenerator):
         last_cycle_deep = deep_pct * 0.7
         last_cycle_rem = rem_pct * 1.5
         
-        for cycle in range(int(np.ceil(cycles))):
-            cycle_fraction = cycle / int(np.ceil(cycles))
+        # CRITICAL: Ensure valid cycle count to avoid infinite loops
+        cycle_count = int(np.ceil(cycles))
+        cycle_count = max(1, min(10, cycle_count))  # Limit to 1-10 cycles for safety
+        
+        for cycle in range(cycle_count):
+            cycle_fraction = cycle / cycle_count
             
             # Adjust deep sleep percentage based on cycle number
             if cycle == 0:
                 cycle_deep_pct = first_cycle_deep
                 cycle_rem_pct = first_cycle_rem
-            elif cycle >= int(cycles) - 1:
+            elif cycle >= cycle_count - 1:
                 cycle_deep_pct = last_cycle_deep
                 cycle_rem_pct = last_cycle_rem
             else:
@@ -263,19 +358,32 @@ class WearableDataGenerator(BaseDataGenerator):
             
             # Adjust light to maintain proportions
             cycle_light_pct = 1.0 - cycle_deep_pct - cycle_rem_pct - awake_pct
+            cycle_light_pct = max(0.1, cycle_light_pct)  # Ensure minimum of 10% light sleep
             
             # Determine minutes for each stage in this cycle
-            if cycle == int(np.ceil(cycles)) - 1:
+            if cycle == cycle_count - 1:
                 # Last cycle might be shorter
                 remaining_minutes = total_minutes - len(stages)
+                remaining_minutes = max(1, remaining_minutes)  # Ensure positive
                 cycle_minutes = remaining_minutes
             
-            # Simplified cycle pattern
-            light_start = int(cycle_minutes * 0.1)
-            deep_minutes = int(cycle_minutes * cycle_deep_pct)
-            light_minutes = int(cycle_minutes * cycle_light_pct) - light_start
-            rem_minutes = int(cycle_minutes * cycle_rem_pct)
-            awake_minutes = int(cycle_minutes * awake_pct)
+            # CRITICAL: Ensure all minute calculations are positive
+            light_start = max(1, int(cycle_minutes * 0.1))
+            deep_minutes = max(1, int(cycle_minutes * cycle_deep_pct))
+            light_minutes = max(1, int(cycle_minutes * cycle_light_pct) - light_start)
+            rem_minutes = max(1, int(cycle_minutes * cycle_rem_pct))
+            awake_minutes = max(0, int(cycle_minutes * awake_pct))  # Awake can be 0
+            
+            # CRITICAL: Check if adding all these minutes exceeds the total we need
+            # If so, proportionately scale down to fit
+            cycle_total = light_start + deep_minutes + light_minutes + rem_minutes + awake_minutes
+            if cycle_total > cycle_minutes:
+                scale_factor = cycle_minutes / cycle_total
+                light_start = max(1, int(light_start * scale_factor))
+                deep_minutes = max(1, int(deep_minutes * scale_factor))
+                light_minutes = max(1, int(light_minutes * scale_factor))
+                rem_minutes = max(1, int(rem_minutes * scale_factor))
+                awake_minutes = max(0, int(awake_minutes * scale_factor))
             
             # Add initial light sleep
             stages.extend(['light'] * light_start)
@@ -293,6 +401,12 @@ class WearableDataGenerator(BaseDataGenerator):
             if cycle > 0 and awake_minutes > 0:
                 # Place awakening at end of cycle
                 stages.extend(['awake'] * awake_minutes)
+            
+            # CRITICAL: Check if we've already exceeded the total minutes
+            if len(stages) >= total_minutes:
+                # Truncate to the exact length needed
+                stages = stages[:total_minutes]
+                break
         
         # Ensure we have exactly the right number of minutes
         if len(stages) < total_minutes:
@@ -407,18 +521,69 @@ class WearableDataGenerator(BaseDataGenerator):
         return movement_data
     
     def _calculate_hrv(self, device_type, heart_rate_data, sleep_efficiency):
-        """Calculate heart rate variability from heart rate data"""
-        # Simple RMSSD calculation (simplified)
-        diffs = np.diff(heart_rate_data)
-        rmssd = np.sqrt(np.mean(np.square(diffs)))
+        """Calculate heart rate variability from heart rate data with enhanced error handling"""
+        # First, ensure heart_rate_data is valid
+        if heart_rate_data is None or not isinstance(heart_rate_data, (list, np.ndarray)) or len(heart_rate_data) < 2:
+            # Not enough data to calculate HRV
+            base_hrv = np.random.uniform(35, 65)  # Generate a reasonable random HRV
+            device_factor = 1.0  # Default device factor
+            
+            # Adjust based on device type
+            if device_type == 'apple_watch':
+                device_factor = 1.1  # Higher quality detection
+            elif device_type == 'fitbit':
+                device_factor = 0.9  # Slightly lower precision
+                
+            return round(base_hrv * device_factor, 1)
         
-        # Adjust based on sleep efficiency - generally higher HRV is better
-        base_hrv = rmssd * (0.8 + sleep_efficiency * 0.4)
-        
-        # Add device-specific variance using base generator method
-        hrv = base_hrv * (0.9 + self.generate_time_based_noise(0.1, 0.05))
-        
-        return round(hrv, 1)
+        try:
+            # Convert to numpy array if it's not already
+            hr_array = np.array(heart_rate_data, dtype=float)
+            
+            # Handle infinite or NaN values
+            hr_array = np.nan_to_num(hr_array, nan=60, posinf=120, neginf=40)
+            
+            # Calculate time differences between consecutive heart rates
+            diffs = np.diff(hr_array)
+            
+            # If all differences are zero or the array is empty
+            if len(diffs) == 0 or np.all(diffs == 0):
+                base_hrv = 25.0 + np.random.uniform(-5, 5)  # Low HRV (rigid heart rate)
+            else:
+                # Calculate RMSSD (root mean square of successive differences)
+                # This is a common HRV measure
+                squared_diffs = np.square(diffs)
+                mean_squared_diff = np.mean(squared_diffs)
+                rmssd = np.sqrt(max(0.01, mean_squared_diff))  # Ensure positive value
+                
+                # Ensure sleep_efficiency is in valid range
+                sleep_efficiency = max(0.01, min(1.0, sleep_efficiency if sleep_efficiency is not None else 0.8))
+                
+                # Base HRV calculation - higher efficiency typically means higher HRV
+                base_hrv = rmssd * (0.8 + sleep_efficiency * 0.4)
+            
+            # Apply device-specific factors
+            device_factor = 1.0  # Default
+            if device_type == 'apple_watch':
+                device_factor = 1.1  # Higher quality detection
+            elif device_type == 'fitbit':
+                device_factor = 0.9  # Slightly lower precision
+                
+            # Add natural variation
+            variation = self.generate_time_based_noise(0.1, 0.05)
+            
+            # Calculate final HRV with bounds
+            hrv = base_hrv * device_factor * (0.9 + variation)
+            
+            # Ensure within realistic limits (20-100 ms is typical range for adults)
+            hrv = max(20, min(100, hrv))
+            
+            return round(hrv, 1)
+            
+        except Exception as e:
+            # If anything goes wrong, provide a fallback value
+            print(f"Error calculating HRV: {e}")
+            return np.random.uniform(35, 65)  # Random reasonable value
     
     def _generate_blood_oxygen(self, sleep_efficiency):
         """Generate blood oxygen levels"""

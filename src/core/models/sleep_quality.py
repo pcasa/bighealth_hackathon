@@ -142,16 +142,28 @@ class SleepQualityModel:
         # Process profession if available
         if 'profession' in data.columns and 'profession_category' not in data.columns:
             data['profession_category'] = data['profession'].apply(self._categorize_profession)
-        
-        # Add profession one-hot encoding if available
-        if 'profession_category' in data.columns:
-            prof_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
-            for category in prof_categories:
-                data[f'profession_{category}'] = (data['profession_category'] == category).astype(float)
-        
+    
+                    
         # Ensure features are in the right format
         required_features = self.config['features']
         available_features = [col for col in required_features if col in data.columns]
+
+        # Ensure profession_category is properly encoded
+        if 'profession_category' in data.columns:
+            # If it's not already one-hot encoded
+            if pd.api.types.is_object_dtype(data['profession_category']):
+                print("Converting profession_category to one-hot encoding")
+                # Create profession one-hot encoding
+                prof_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
+                for category in prof_categories:
+                    col_name = f'profession_{category}'
+                    if col_name not in data.columns:
+                        # Use string comparison to avoid issues with numeric values
+                        data[col_name] = (data['profession_category'].astype(str) == category).astype(float)
+                
+                # Remove the original category column from features
+                if 'profession_category' in available_features:
+                    available_features.remove('profession_category')
         
         # Add demographic and seasonal features if available
         demographic_features = [col for col in data.columns if (
@@ -161,7 +173,31 @@ class SleepQualityModel:
         )]
         
         available_features.extend([f for f in demographic_features if f not in available_features])
-        
+
+        print(f"Available features before filtering: {available_features}")
+
+        for feature in list(available_features):  # Use list() to avoid modifying during iteration
+            if not pd.api.types.is_numeric_dtype(data[feature]):
+                print(f"Converting non-numeric feature: {feature}")
+                
+                # For profession_category
+                if feature == 'profession_category':
+                    # Create one-hot encoding
+                    prof_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
+                    for category in prof_categories:
+                        col_name = f'profession_{category}'
+                        if col_name not in data.columns:
+                            data[col_name] = (data['profession_category'].astype(str) == category).astype(float)
+                        if col_name not in available_features:
+                            available_features.append(col_name)
+                    
+                    # Remove original category column
+                    available_features.remove(feature)
+                else:
+                    # Remove other non-numeric features
+                    available_features.remove(feature)
+
+        print(f"Available features after processing: {available_features}")
         # Group by user to create sequences
         try:
             user_groups = data.groupby('user_id')
@@ -214,6 +250,15 @@ class SleepQualityModel:
             raise ValueError(error_msg)
         
         print(f"Created {len(sequences)} sequences")
+
+        # Debug: Check for non-numeric values in available_features
+        for feature in available_features:
+            if not pd.api.types.is_numeric_dtype(data[feature]):
+                print(f"WARNING: Non-numeric data in feature '{feature}': {data[feature].head()}")
+                # Try to convert to numeric if possible
+                data[feature] = pd.to_numeric(data[feature], errors='coerce')
+                # Fill NaN values after conversion
+                data[feature] = data[feature].fillna(0)
         
         # Convert to tensors
         X = torch.FloatTensor(np.array(sequences))
