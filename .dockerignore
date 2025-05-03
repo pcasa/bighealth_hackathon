@@ -1,0 +1,42 @@
+# Version control
+.git
+.gitignore
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Data directories (we'll mount these as volumes)
+data/*
+!data/.gitkeep
+
+# Model files (we'll mount these as volumes)
+models/*
+!models/.gitkeep
+
+# Test and documentation
+tests/
+docs/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
