@@ -462,7 +462,7 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
         for idx, row in user_data.iterrows():
             try:
                 # Use the sleep_score_calculator from the model
-                sleep_score = sleep_quality_model.calculate_sleep_score(
+                sleep_score_result = sleep_quality_model.calculate_sleep_score_with_confidence(
                     row.get('sleep_efficiency', 0.8),
                     row.get('subjective_rating', 7),
                     {
@@ -472,14 +472,15 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
                         'awakenings_count': row.get('awakenings_count', 2)
                     }
                 )
-                
+
                 # Store prediction
                 prediction = {
                     'user_id': user_id,
                     'date': row['date'],
                     'sleep_efficiency': row.get('sleep_efficiency', 0.8),
                     'sleep_duration_hours': row.get('sleep_duration_hours', 7.0),
-                    'predicted_sleep_score': sleep_score
+                    'predicted_sleep_score': sleep_score_result['score'],
+                    'prediction_confidence': sleep_score_result['confidence']
                 }
                 all_predictions.append(prediction)
             except Exception as e:
