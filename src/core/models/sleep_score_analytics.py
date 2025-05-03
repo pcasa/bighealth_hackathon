@@ -4,7 +4,8 @@
 Module for analyzing sleep scores across demographic and temporal dimensions.
 This module works with the existing Sleep Insights App architecture.
 """
-from pydantic import Field, validator
+import json
+from pydantic import Field, validator, BaseModel
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import pandas as pd
@@ -12,12 +13,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-from core.models.base_model import BaseModel
 from src.core.models.sleep_quality import SleepQualityModel
 from src.core.data_processing.preprocessing import Preprocessor
 from src.utils.constants import profession_categories
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
-from src.core.scoring.sleep_score import SleepScoreCalculator
 
 class AnalysisDimension(str, Enum):
     """Dimensions for sleep score analysis"""
@@ -134,10 +133,19 @@ class SleepScoreAnalytics:
         scored_data = data.copy()
         
         # Add sleep score column using the centralized calculator
-        scored_data['sleep_score'] = scored_data.apply(
-            lambda row: self.sleep_score_calculator.calculate_score(row.to_dict()).total_score,
-            axis=1
-        )
+        def calculate_row_score(row):
+            # Convert row to dictionary
+            row_dict = row.to_dict()
+            
+            # Convert timestamp fields to strings
+            for field in ['bedtime', 'sleep_onset_time', 'wake_time', 'out_bed_time']:
+                if field in row_dict and isinstance(row_dict[field], pd.Timestamp):
+                    row_dict[field] = row_dict[field].strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Calculate score
+            return self.sleep_score_calculator.calculate_score(row_dict)
+        
+        scored_data['sleep_score'] = scored_data.apply(calculate_row_score, axis=1)
         
         return scored_data
     
@@ -164,6 +172,14 @@ class SleepScoreAnalytics:
         results = {}
         for _, row in sorted_data.iterrows():
             category = row[dimension]
+            
+            # Convert non-string values to strings
+            if not isinstance(category, str):
+                if isinstance(category, pd.Timestamp):
+                    category = category.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    category = str(category)
+            
             results[category] = AnalysisStats(
                 count=int(row['count']),
                 mean=float(row['mean']),
@@ -247,55 +263,56 @@ class SleepScoreAnalytics:
                 f.write("| Category | Count | Mean Score | Median | Std Dev | Min | Max |\n")
                 f.write("|----------|-------|------------|--------|---------|-----|-----|\n")
                 
+                # Get sorted categories by mean score
+                categories = sorted(data.results.keys(), 
+                                key=lambda x: data.results[x].mean, 
+                                reverse=True)
+                
                 # Write each row
-                for _, row in data.iterrows():
-                    f.write(f"| {row[dimension]} | {int(row['count'])} | {row['mean']:.2f} | ")
-                    f.write(f"{row['median']:.2f} | {row['std']:.2f} | {row['min']:.2f} | {row['max']:.2f} |\n")
+                for category in categories:
+                    stats = data.results[category]
+                    f.write(f"| {category} | {stats.count} | {stats.mean:.2f} | ")
+                    f.write(f"{stats.median:.2f} | {stats.std:.2f} | {stats.min:.2f} | {stats.max:.2f} |\n")
                 
                 f.write("\n")
                 
                 # Add insights
                 f.write("### Key Insights\n\n")
                 
-                best_category = data.iloc[0][dimension]
-                worst_category = data.iloc[-1][dimension]
-                mean_diff = data.iloc[0]['mean'] - data.iloc[-1]['mean']
+                best_category = categories[0]
+                worst_category = categories[-1]
+                mean_diff = data.results[best_category].mean - data.results[worst_category].mean
                 
-                f.write(f"- {best_category} has the highest average sleep score ({data.iloc[0]['mean']:.2f}).\n")
-                f.write(f"- {worst_category} has the lowest average sleep score ({data.iloc[-1]['mean']:.2f}).\n")
+                f.write(f"- {best_category} has the highest average sleep score ({data.results[best_category].mean:.2f}).\n")
+                f.write(f"- {worst_category} has the lowest average sleep score ({data.results[worst_category].mean:.2f}).\n")
                 f.write(f"- The difference between the highest and lowest category is {mean_diff:.2f} points.\n")
                 
                 # Identify highest variability
-                highest_std_idx = data['std'].idxmax()
-                highest_std_cat = data.iloc[highest_std_idx][dimension]
-                highest_std = data.iloc[highest_std_idx]['std']
+                highest_std_cat = max(categories, key=lambda x: data.results[x].std)
+                highest_std = data.results[highest_std_cat].std
                 
                 f.write(f"- {highest_std_cat} shows the highest variability with a standard deviation of {highest_std:.2f}.\n\n")
                 
                 # Add image reference
                 f.write(f"![Sleep Scores by {dimension.replace('_', ' ').title()}]({dimension}_sleep_scores.png)\n\n")
             
-            # Add cross-dimension insights
+            # Add cross-dimension insights and recommendations (simplified)
             f.write("## Cross-Dimensional Insights\n\n")
+            f.write("### Profession and Region Interaction\n\n")
+            f.write("The heatmap below shows how sleep scores vary across both profession and region categories:\n\n")
+            f.write("![Profession-Region Heatmap](profession_region_heatmap.png)\n\n")
             
-            if 'profession_category' in analysis_results and 'region_category' in analysis_results:
-                f.write("### Profession and Region Interaction\n\n")
-                f.write("The heatmap below shows how sleep scores vary across both profession and region categories:\n\n")
-                f.write("![Profession-Region Heatmap](profession_region_heatmap.png)\n\n")
-            
-            if 'age_range' in analysis_results and 'season' in analysis_results:
-                f.write("### Age Range and Season Interaction\n\n")
-                f.write("The heatmap below shows how sleep scores vary across both age ranges and seasons:\n\n")
-                f.write("![Age-Season Heatmap](age_season_heatmap.png)\n\n")
+            f.write("### Age Range and Season Interaction\n\n")
+            f.write("The heatmap below shows how sleep scores vary across both age ranges and seasons:\n\n")
+            f.write("![Age-Season Heatmap](age_season_heatmap.png)\n\n")
             
             # Final recommendations
             f.write("## Recommendations\n\n")
             f.write("Based on the analysis, we recommend:\n\n")
             
-            # Generate dynamic recommendations based on findings
-            recommendations = self._generate_recommendations(analysis_results)
-            for rec in recommendations:
-                f.write(f"- {rec}\n")
+            # Generate some basic recommendations
+            f.write("- Develop personalized recommendation algorithms that factor in age, profession, region, and season.\n")
+            f.write("- Continue collecting demographic data to refine understanding of sleep quality determinants.\n")
         
         print(f"Summary report saved to {output_path}")
     
@@ -382,8 +399,13 @@ class SleepScoreAnalytics:
         """Create and save plot for a specific dimension"""
         plt.figure(figsize=(12, 6))
         
+        # Extract data from the DimensionAnalysis object
+        categories = list(data.results.keys())
+        means = [stats.mean for stats in data.results.values()]
+        stds = [stats.std for stats in data.results.values()]
+        
         # Bar plot with error bars
-        bars = plt.bar(data[dimension], data['mean'], yerr=data['std'], capsize=5)
+        bars = plt.bar(categories, means, yerr=stds, capsize=5)
         
         # Customize plot
         plt.xlabel(dimension.replace('_', ' ').title())
@@ -395,7 +417,7 @@ class SleepScoreAnalytics:
         plt.tight_layout()
         
         # Add value labels on top of bars
-        for bar in bars:
+        for i, bar in enumerate(bars):
             height = bar.get_height()
             plt.text(bar.get_x() + bar.get_width()/2., height + 1,
                     f'{height:.1f}', ha='center', va='bottom')

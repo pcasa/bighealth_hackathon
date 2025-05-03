@@ -182,6 +182,51 @@ class SleepScoreCalculator:
         
         return output
     
+    def _score_continuity(self, sleep_data):
+        """Score sleep continuity component (awakenings and time awake)"""
+        awakenings_score = None
+        awake_time_score = None
+        
+        # Check if awakenings count is available
+        if sleep_data.awakenings_count is not None:
+            awakenings = sleep_data.awakenings_count
+            min_ideal, max_ideal = self.ideal_ranges['awakenings_count']
+            
+            # Score based on awakenings
+            if awakenings <= max_ideal:
+                # Ideal range - full score
+                awakenings_score = 100
+            else:
+                # Penalize each additional awakening
+                awakenings_score = max(0, 100 - 10 * (awakenings - max_ideal))
+        
+        # Check if time awake is available
+        if sleep_data.total_awake_minutes is not None:
+            awake_time = sleep_data.total_awake_minutes
+            min_ideal, max_ideal = self.ideal_ranges['total_awake_minutes']
+            
+            # Score based on time awake
+            if awake_time <= max_ideal:
+                # Ideal range - full score
+                awake_time_score = 100
+            elif awake_time <= 45:
+                # Mild disruption
+                awake_time_score = 90 - (awake_time - max_ideal) * 0.8
+            else:
+                # Severe disruption
+                awake_time_score = max(0, 70 - (awake_time - 45) * 0.7)
+        
+        # Combine scores if both are available, otherwise use the available one
+        if awakenings_score is not None and awake_time_score is not None:
+            # Weight time awake more heavily than count
+            return 0.4 * awakenings_score + 0.6 * awake_time_score
+        elif awakenings_score is not None:
+            return awakenings_score
+        elif awake_time_score is not None:
+            return awake_time_score
+        else:
+            return None
+    
     def _score_duration(self, sleep_data):
         """Score sleep duration component with a more realistic distribution"""
         if sleep_data.sleep_duration_hours is None:

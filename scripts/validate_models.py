@@ -26,10 +26,10 @@ from sklearn.metrics import (
 # Add the src directory to the path so we can import our modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.data_processing.preprocessing import Preprocessor
-from src.data_processing.feature_engineering import FeatureEngineering
-from src.models.sleep_quality import SleepQualityModel
-from src.models.transfer_learning import TransferLearning
+from src.core.data_processing.preprocessing import Preprocessor
+from src.core.data_processing.feature_engineering import FeatureEngineering
+from src.core.models.sleep_quality import SleepQualityModel
+from src.core.models.transfer_learning import TransferLearning
 from src.monitoring.data_drift import DataDriftDetector
 
 # Set up logging
@@ -38,7 +38,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('validate_models.log')
+        logging.FileHandler('data/logs/validate_models.log')
     ]
 )
 

@@ -1,6 +1,6 @@
 # Sleep Quality Prediction Model v1.0
 
-**Created:** 2025-05-01
+**Created:** 2025-05-03
 
 ## Description
 Sequence-based deep learning model for sleep quality analysis and prediction
@@ -42,10 +42,10 @@ LSTM Neural Network
 ```json
 {
   "user_id": "sample_user_01",
-  "date": "2025-04-30",
+  "date": "2025-05-02",
   "predicted_sleep_efficiency": 0.87,
   "prediction_confidence": 0.85,
-  "sleep_score": 83,
+  "sleep_score": 91,
   "next_night_prediction": {
     "expected_sleep_efficiency": 0.88,
     "confidence": 0.7999999999999999
@@ -56,19 +56,42 @@ LSTM Neural Network
 ### Sleep Score with Component Details
 ```json
 {
-  "total_score": 82,
+  "total_score": 96,
+  "base_score": 96,
   "component_scores": {
-    "duration": 92,
-    "efficiency": 88,
-    "onset": 95,
-    "continuity": 85,
-    "timing": 75,
-    "subjective": 80
+    "duration": {
+      "score": 100.0,
+      "description": "Optimal sleep duration of 7-9 hours",
+      "raw_value": null
+    },
+    "efficiency": {
+      "score": 100.0,
+      "description": "Excellent sleep efficiency (time asleep / time in bed)",
+      "raw_value": null
+    },
+    "onset": {
+      "score": 100.0,
+      "description": "Fall asleep quickly within optimal range",
+      "raw_value": null
+    },
+    "continuity": {
+      "score": 100.0,
+      "description": "Minimal awakenings and disruptions",
+      "raw_value": null
+    },
+    "timing": {
+      "score": 100.0,
+      "description": "Optimal sleep timing aligned with circadian rhythm",
+      "raw_value": null
+    },
+    "subjective": {
+      "score": 80.0,
+      "description": "Good subjective sleep quality",
+      "raw_value": null
+    }
   },
-  "demographic_adjustment": 2,
-  "adjustment_reasons": [
-    "Tech workers often have later work hours"
-  ]
+  "demographic_adjustment": 0.0,
+  "adjustment_reasons": []
 }
 ```
 
@@ -141,8 +164,8 @@ Analysis types:
 - Impact assessment by demographic factor
 
 ## Performance Metrics
-- mse: 0.05727999657392502
-- rmse: 0.23933239766885933
+- mse: 0.05904489383101463
+- rmse: 0.24299155094573685
 - features: ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate', 'age_normalized', 'profession_healthcare', 'profession_tech', 'profession_service', 'profession_education', 'profession_office', 'profession_other', 'season_Winter', 'season_Spring', 'season_Summer', 'season_Fall']
 
 ## Limitations

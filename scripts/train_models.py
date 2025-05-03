@@ -26,7 +26,7 @@ from src.core.data_processing.preprocessing import Preprocessor
 from src.core.data_processing.feature_engineering import FeatureEngineering
 from src.core.models.sleep_quality import SleepQualityModel
 from src.core.models.transfer_learning import TransferLearning
-from src.utils.data_validation_fix import fix_feature_ranges, validate_dataframe_for_model, patch_feature_engineering
+from src.utils.data_validation_fix import ensure_sleep_data_format, fix_feature_ranges, validate_dataframe_for_model, patch_feature_engineering
 
 # Set up logging
 logging.basicConfig(
@@ -34,7 +34,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('train_models_fixed.log')
+        logging.FileHandler('data/logs/train_models_fixed.log')
     ]
 )
 
@@ -128,6 +128,7 @@ def load_data(data_dir):
         users_df = ensure_clean_user_ids(users_df)
         sleep_data_df = fix_feature_ranges(sleep_data_df)
         sleep_data_df = ensure_clean_user_ids(sleep_data_df)
+        sleep_data_df = ensure_sleep_data_format(sleep_data_df)
         
         if wearable_data_df is not None:
             wearable_data_df = fix_feature_ranges(wearable_data_df)

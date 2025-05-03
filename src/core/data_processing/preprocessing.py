@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from src.core.models.data_models import SleepEntry, WearableData, UserProfile
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
+from src.utils.data_validation_fix import ensure_sleep_data_format
 from src.utils.ensure_valid_numeric_fields import ensure_valid_numeric_fields
 
 
@@ -15,7 +16,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('preprocessor.log')
+        logging.FileHandler('data/logs/preprocessor.log')
     ]
 )
 
@@ -89,6 +90,12 @@ class Preprocessor:
             processed_data['user_id'] = original_user_ids.values[:len(processed_data)]
             logger.info("Added user_id from original data")
         
+        # Validate time_in_bed_hours before returning 
+        if 'time_in_bed_hours' in processed_data.columns:
+            processed_data['time_in_bed_hours'] = processed_data['time_in_bed_hours'].clip(upper=24.0)
+
+        processed_data = ensure_valid_numeric_fields(processed_data)
+        
         return processed_data
     
     def _get_season(self, month):
@@ -156,6 +163,14 @@ class Preprocessor:
                 col_name = f'season_{season}'
                 if col_name not in processed_data.columns:
                     processed_data[col_name] = (processed_data['season'] == season).astype(float)
+
+        # Ensure date fields are properly formatted strings before validation
+        for field in ['date', 'bedtime', 'sleep_onset_time', 'wake_time', 'out_bed_time']:
+            if field in processed_data.columns:
+                if pd.api.types.is_datetime64_dtype(processed_data[field]):
+                    processed_data[field] = processed_data[field].dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        processed_data = ensure_sleep_data_format(processed_data)
         
         # Validate and normalize sleep entries
         validated_entries = []
@@ -311,6 +326,12 @@ class Preprocessor:
         
         if missing_columns:
             print(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
+
+        # Ensure demographic data is preserved
+        demographic_columns = ['age', 'profession', 'region', 'gender', 'user_id']
+        for column in demographic_columns:
+            if column not in processed_data.columns and column in sleep_data.columns:
+                processed_data[column] = sleep_data[column]
         
         processed_data = ensure_valid_numeric_fields(processed_data)
         return processed_data
@@ -432,6 +453,12 @@ class Preprocessor:
         for col in consistency_columns:
             if col in data.columns:
                 data[col] = data[col].fillna(0.5)  # Moderate consistency as default
+
+        # Handle alternative field names
+        if 'total_awake_minutes' in data.columns and 'time_awake_minutes' not in data.columns:
+            data['time_awake_minutes'] = data['total_awake_minutes']
+        elif 'time_awake_minutes' in data.columns and 'total_awake_minutes' not in data.columns:
+            data['total_awake_minutes'] = data['time_awake_minutes']
         
         # Return the cleaned data
         return data

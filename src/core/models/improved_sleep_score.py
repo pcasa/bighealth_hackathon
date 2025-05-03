@@ -1,5 +1,7 @@
+import pandas as pd
 from pydantic import BaseModel, Field, model_validator, validator
 from typing import Dict, Optional, List, Union
+from datetime import datetime
 
 class SleepScoreInput(BaseModel):
     """Input model for sleep score calculation"""
@@ -13,13 +15,13 @@ class SleepScoreInput(BaseModel):
     awakenings_count: Optional[int] = Field(None, ge=0)
     total_awake_minutes: Optional[float] = Field(None, ge=0.0)
     time_awake_minutes: Optional[float] = Field(None, ge=0.0)  # Alternative name
-    subjective_rating: Optional[int] = Field(None, ge=0, le=10)
+    subjective_rating: Optional[float] = Field(None, ge=0.0, le=10.0)
     
     # Timestamps
-    bedtime: Optional[str] = None
-    sleep_onset_time: Optional[str] = None
-    wake_time: Optional[str] = None
-    out_bed_time: Optional[str] = None
+    bedtime: Optional[Union[str, datetime]] = None
+    sleep_onset_time: Optional[Union[str, datetime]] = None
+    wake_time: Optional[Union[str, datetime]] = None
+    out_bed_time: Optional[Union[str, datetime]] = None
     
     # Sleep stage data
     deep_sleep_percentage: Optional[float] = Field(None, ge=0.0, le=1.0)
@@ -238,23 +240,23 @@ class ImprovedSleepScoreCalculator:
 
     def _calculate_weighted_score(self, component_scores):
         """Calculate weighted average of component scores"""
-        # Initialize weighted score
         weighted_score = 0
         total_weight = 0
         
-        # Add each available component
         for component, weight in self.component_weights.items():
             if component in component_scores and component_scores[component] is not None:
-                weighted_score += component_scores[component] * weight
+                component_contribution = component_scores[component] * weight
+                weighted_score += component_contribution
                 total_weight += weight
+        
         
         # Normalize if not all components are available
         if total_weight > 0:
-            weighted_score = weighted_score / total_weight * 100
+            final_score = weighted_score / total_weight
         else:
-            weighted_score = 50  # Default score if no components available
+            final_score = 50  # Default score
         
-        return max(0, min(100, weighted_score))
+        return max(0, min(100, final_score))
     
     def _score_duration(self, sleep_data):
         """Score sleep duration component"""
@@ -308,67 +310,80 @@ class ImprovedSleepScoreCalculator:
     
     def _score_onset(self, sleep_data):
         """Score sleep onset component"""
-        # Check if onset latency is available
-        if sleep_data.sleep_onset_latency_minutes is None:
+        # Debug
+        latency = None
+        
+        if hasattr(sleep_data, 'sleep_onset_latency_minutes'):
+            latency = sleep_data.sleep_onset_latency_minutes
+        elif isinstance(sleep_data, dict) and 'sleep_onset_latency_minutes' in sleep_data:
+            latency = sleep_data['sleep_onset_latency_minutes']
+        else:
+            print("DEBUG: No sleep_onset_latency_minutes found")
+
+
+        """Score sleep onset component"""
+        # Check if onset latency is available - fix the attribute access for dict input
+        latency = getattr(sleep_data, 'sleep_onset_latency_minutes', None) if hasattr(sleep_data, 'sleep_onset_latency_minutes') else sleep_data.get('sleep_onset_latency_minutes')
+        
+        if latency is None:
             return None
             
-        latency = sleep_data.sleep_onset_latency_minutes
+        # Apply more rigorous scoring
         min_ideal, max_ideal = self.ideal_ranges['sleep_onset_latency_minutes']
         
-        # Score based on how close to ideal range
+        # More penalty for very short or long latency
         if latency < min_ideal:
-            # Too quick - may indicate exhaustion
-            return 80
+            return 80  # Falling asleep too quickly might indicate sleep deprivation
         elif latency <= max_ideal:
-            # Ideal range - full score
             return 100
         elif latency <= 30:
-            # Slightly delayed - mild penalty
-            return 90 - (latency - max_ideal) * 1
+            return 90 - (latency - max_ideal) * 2  # More significant penalty
         elif latency <= 60:
-            # Moderately delayed - steeper penalty
-            return 80 - (latency - 30) * 1.5
+            return 80 - (latency - 30) * 1.5  # Steeper decline for delays
         else:
-            # Severely delayed - largest penalty
-            return max(0, 35 - (latency - 60) * 0.35)
+            return max(0, 35 - (latency - 60) * 0.5)  # More severe penalty for very long delays
     
     def _score_continuity(self, sleep_data):
         """Score sleep continuity component (awakenings and time awake)"""
         awakenings_score = None
         awake_time_score = None
         
-        # Check if awakenings count is available
+        # Process awakenings count if available
         if sleep_data.awakenings_count is not None:
             awakenings = sleep_data.awakenings_count
             min_ideal, max_ideal = self.ideal_ranges['awakenings_count']
             
             # Score based on awakenings
             if awakenings <= max_ideal:
-                # Ideal range - full score
                 awakenings_score = 100
             else:
-                # Penalize each additional awakening
                 awakenings_score = max(0, 100 - 10 * (awakenings - max_ideal))
         
-        # Check if time awake is available
+        # Determine awake time - use available data or estimate
+        awake_time = None
         if sleep_data.total_awake_minutes is not None:
             awake_time = sleep_data.total_awake_minutes
-            min_ideal, max_ideal = self.ideal_ranges['total_awake_minutes']
-            
-            # Score based on time awake
-            if awake_time <= max_ideal:
-                # Ideal range - full score
-                awake_time_score = 100
-            elif awake_time <= 45:
-                # Mild disruption
-                awake_time_score = 90 - (awake_time - max_ideal) * 0.8
+        elif sleep_data.awakenings_count is not None and sleep_data.awakenings_count > 0:
+            # Estimate based on pattern
+            if hasattr(sleep_data, 'sleep_pattern') and sleep_data.sleep_pattern == 'insomnia':
+                awake_time = sleep_data.awakenings_count * 30  # 30 min for insomnia
             else:
-                # Severe disruption
-                awake_time_score = max(0, 70 - (awake_time - 45) * 0.7)
+                awake_time = sleep_data.awakenings_count * 10  # 10 min normally
         
-        # Combine scores if both are available, otherwise use the available one
+        # Score awake time if we have it
+        if awake_time is not None:
+            # Extended scale for insomnia
+            if awake_time <= 20:  # Ideal range
+                awake_time_score = 100
+            elif awake_time <= 45:  # Mild disruption
+                awake_time_score = 90 - (awake_time - 20) * 0.8
+            elif awake_time <= 120:  # Up to 2 hours
+                awake_time_score = 70 - (awake_time - 45) * 0.25
+            else:  # More than 2 hours
+                awake_time_score = max(0, 50 - (awake_time - 120) * 0.1)
+        
+        # Combine scores with more weight on time awake
         if awakenings_score is not None and awake_time_score is not None:
-            # Weight time awake more heavily than count
             return 0.4 * awakenings_score + 0.6 * awake_time_score
         elif awakenings_score is not None:
             return awakenings_score
@@ -390,9 +405,11 @@ class ImprovedSleepScoreCalculator:
             else:
                 # Try to parse from string
                 try:
-                    from datetime import datetime
-                    dt = datetime.strptime(sleep_data.bedtime, '%Y-%m-%d %H:%M:%S')
-                    bedtime_hour = dt.hour
+                    if isinstance(sleep_data.bedtime, pd.Timestamp):
+                        bedtime_hour = sleep_data.bedtime.hour
+                    else:
+                        dt = pd.to_datetime(sleep_data.bedtime)
+                        bedtime_hour = dt.hour
                 except:
                     bedtime_hour = None
             
@@ -469,11 +486,9 @@ class ImprovedSleepScoreCalculator:
             
         rating = sleep_data.subjective_rating
         
-        # Convert rating to 0-100 scale 
-        # Assuming rating is on 1-10 scale
-        if 1 <= rating <= 10:
-            return (rating - 1) / 9 * 100
-        # Assuming rating is already on 0-100 scale
+        # Convert rating to 0-100 scale, handling floats
+        if 0 <= rating <= 10:
+            return rating * 10  # Scale linearly from 0-10 to 0-100
         elif 0 <= rating <= 100:
             return rating
         else:

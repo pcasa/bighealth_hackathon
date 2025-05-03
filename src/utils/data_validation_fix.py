@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import shutil
 
@@ -287,3 +288,41 @@ def patch_feature_engineering(feature_engineering_instance):
     feature_engineering_instance._scale_features = patched_scale_features
     
     return feature_engineering_instance
+
+def ensure_sleep_data_format(data):
+    """Ensure sleep data has consistent field names and formats"""
+    # Handle alternative field names
+    if 'total_awake_minutes' in data.columns and 'time_awake_minutes' not in data.columns:
+        data['time_awake_minutes'] = data['total_awake_minutes']
+    elif 'time_awake_minutes' in data.columns and 'total_awake_minutes' not in data.columns:
+        data['total_awake_minutes'] = data['time_awake_minutes']
+    
+    # Ensure date fields are strings
+    date_fields = ['date', 'bedtime', 'sleep_onset_time', 'wake_time', 'out_bed_time']
+    for field in date_fields:
+        if field in data.columns and pd.api.types.is_datetime64_dtype(data[field]):
+            data[field] = data[field].dt.strftime('%Y-%m-%d %H:%M:%S')
+    
+    return data
+
+def ensure_datetime(date_value):
+    """Safely convert a value to datetime, handling both strings and existing timestamps"""
+    if date_value is None:
+        return None
+    if isinstance(date_value, (pd.Timestamp, datetime)):
+        return date_value
+    try:
+        return pd.to_datetime(date_value)
+    except:
+        return None
+    
+def safe_parse_datetime(value):
+    """Safely parse a datetime value that could be a string or already a datetime"""
+    if value is None:
+        return None
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return value
+    try:
+        return pd.to_datetime(value)
+    except:
+        return None

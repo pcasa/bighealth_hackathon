@@ -1,6 +1,6 @@
 # src/core/models/data_models.py
 
-from pydantic import BaseModel, Field, field_validator, model_validator, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Dict, Optional, Union, Any
 from datetime import datetime
 from enum import Enum
@@ -42,19 +42,39 @@ class UserProfile(BaseModel):
     sleep_consistency: float = Field(..., ge=0.0, le=1.0)
     created_at: str
     
-    @validator('sleep_pattern')
+    @field_validator('sleep_pattern')
     def validate_sleep_pattern(cls, v):
         valid_patterns = ['normal', 'insomnia', 'shift_worker', 'oversleeper', 'variable']
         if v not in valid_patterns:
             raise ValueError(f'Invalid sleep pattern. Must be one of: {", ".join(valid_patterns)}')
         return v
     
-    @validator('device_type')
+    @field_validator('device_type')
     def validate_device_type(cls, v):
         valid_devices = ['apple_watch', 'google_watch', 'fitbit', 'samsung_watch']
         if v not in valid_devices:
             raise ValueError(f'Invalid device type. Must be one of: {", ".join(valid_devices)}')
         return v
+    
+    @field_validator('bedtime', 'sleep_onset_time', 'wake_time', 'out_bed_time', 'date', check_fields=False)
+    def validate_datetime_format(cls, v):
+        """Validate and convert datetime fields"""
+        if isinstance(v, datetime):
+            return v.strftime('%Y-%m-%d %H:%M:%S')
+        
+        if isinstance(v, str):
+            try:
+                # Try parsing with multiple formats
+                for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d']:
+                    try:
+                        dt = datetime.strptime(v, fmt)
+                        return v
+                    except ValueError:
+                        continue
+            except:
+                pass
+        
+        raise ValueError(f"Invalid datetime format: {v}")
 
 
 # Sleep Data Models

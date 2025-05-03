@@ -12,7 +12,7 @@ import seaborn as sns
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.core.data_processing.preprocessing import Preprocessor
-from core.recommendation.recommendation_engine import SleepRecommendationEngine
+from src.core.recommendation.recommendation_engine import SleepRecommendationEngine
 from src.core.models.sleep_quality import SleepQualityModel
 # Import the new SleepScoreAnalytics class
 from src.core.models.sleep_score_analytics import SleepScoreAnalytics

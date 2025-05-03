@@ -19,7 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.core.data_processing.preprocessing import Preprocessor
 from src.core.models.sleep_quality import SleepQualityModel
-from core.recommendation.recommendation_engine import SleepRecommendationEngine
+from src.core.recommendation.recommendation_engine import SleepRecommendationEngine
 
 # Set up logging
 logging.basicConfig(
@@ -27,7 +27,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('sleep_advisor.log')
+        logging.FileHandler('data/logs/sleep_advisor.log')
     ]
 )
 

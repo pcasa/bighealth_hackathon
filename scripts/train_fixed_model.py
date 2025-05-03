@@ -35,7 +35,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('train_fixed_model.log')
+        logging.FileHandler('data/logs/train_fixed_model.log')
     ]
 )
 

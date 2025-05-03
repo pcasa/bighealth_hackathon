@@ -156,10 +156,24 @@ def generate_model_card_with_samples(model, filepath, performance_metrics=None, 
             ]
         }
     }
+
+    with open(filepath, 'w') as f:
+        # Convert Pydantic models to dictionaries
+        if hasattr(sample_outputs["sleep_score_with_details"], 'dict'):
+            sample_outputs["sleep_score_with_details"] = sample_outputs["sleep_score_with_details"].dict()
+        
+        # Use custom JSON encoder that handles Pydantic models
+        class EnhancedJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if hasattr(obj, 'dict') and callable(getattr(obj, 'dict')):
+                    return obj.dict()
+                elif hasattr(obj, '__dict__'):
+                    return obj.__dict__
+                return super().default(obj)
     
     # Save model card
     with open(filepath, 'w') as f:
-        json.dump(model_card, f, indent=2)
+        json.dump(model_card, f, indent=2, cls=EnhancedJSONEncoder)
     
     # Also create a markdown version
     md_filepath = filepath.replace('.json', '.md')
@@ -390,7 +404,7 @@ def generate_sample_sleep_score(model):
     
     # Try to calculate score from model or simulate
     try:
-        from src.models.improved_sleep_score import ImprovedSleepScoreCalculator
+        from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
         calculator = ImprovedSleepScoreCalculator()
         score_details = calculator.calculate_score(sleep_data, include_details=True)
     except:

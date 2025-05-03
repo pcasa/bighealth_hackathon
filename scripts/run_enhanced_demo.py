@@ -24,11 +24,13 @@ from src.data_generation.user_generator import UserGenerator
 from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
 from src.core.data_processing.preprocessing import Preprocessor
-from core.recommendation.recommendation_engine import SleepRecommendationEngine
+from src.core.recommendation.recommendation_engine import SleepRecommendationEngine
 from src.core.models.sleep_quality import SleepQualityModel
 from src.data_generation.base_generator import BaseDataGenerator
 from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
+from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
+from src.utils.data_validation_fix import ensure_sleep_data_format
 
 
 def load_config(config_path='src/config/data_generation_config.yaml'):
@@ -190,6 +192,13 @@ def generate_visualizations(users_df, sleep_data_df, output_dir):
     plt.style.use('seaborn-v0_8-whitegrid')
     sns.set_palette("viridis")
 
+    # Ensure date fields are datetime objects
+    if 'date' in sleep_data_df.columns and not pd.api.types.is_datetime64_dtype(sleep_data_df['date']):
+        sleep_data_df['date'] = pd.to_datetime(sleep_data_df['date'])
+        
+    if 'created_at' in users_df.columns and not pd.api.types.is_datetime64_dtype(users_df['created_at']):
+        users_df['created_at'] = pd.to_datetime(users_df['created_at'])
+
     # Check if 'created_at' exists, add it if missing
     if 'created_at' not in users_df.columns:
         print("Warning: 'created_at' field missing, generating placeholder values")
@@ -277,6 +286,7 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
     os.makedirs(os.path.join(output_dir, 'data'), exist_ok=True)
     os.makedirs(os.path.join(output_dir, 'visualizations'), exist_ok=True)
     os.makedirs(os.path.join(output_dir, 'recommendations'), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, 'predictions'), exist_ok=True)
 
     # Set random seed for reproducibility
     np.random.seed(seed)
@@ -303,6 +313,7 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
     wearable_data_df.to_csv(os.path.join(output_dir, 'data', 'wearable_data.csv'), index=False)
     
     # Step 4: Analyze dataset
+    sleep_data_df = ensure_sleep_data_format(sleep_data_df)
     analyze_dataset(users_df, sleep_data_df, wearable_data_df)
     
     # Step 5: Generate visualizations
@@ -368,13 +379,128 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
     print(f"  - Visualizations: {output_dir}/visualizations/")
     print(f"  - Recommendations: {output_dir}/recommendations/")
 
+    # After Step 5 but before Step 6 in run_enhanced_demo function:
+
+    # Generate sleep score predictions for each user
+    print("\nGenerating sleep score predictions...")
+    sleep_quality_model = SleepQualityModel()
+    sleep_quality_model.sleep_score_calculator = ImprovedSleepScoreCalculator()
+
+    # Try to load a pre-trained model if available
+    model_path = 'models/sleep_quality_model'
+    try:
+        sleep_quality_model.load(model_path)
+        print("Loaded pre-trained sleep quality model")
+    except Exception as e:
+        print(f"Could not load pre-trained model: {e}")
+        print("Will use default scoring method")
+
+    # Process each user and generate predictions
+    all_predictions = []
+
+    # DEBUGGING: Limit to a single user for testing
+    # Only process one user for debugging
+    debug_user = list(sleep_data_df['user_id'].unique())[0]
+    user_data = sleep_data_df[sleep_data_df['user_id'] == debug_user].copy()
+
+    # Process just one row for debugging
+    for idx, row in user_data.iloc[:3].iterrows():
+        try:
+            # Create a full data dictionary
+            sleep_data = {
+                'sleep_efficiency': row.get('sleep_efficiency', 0.8),
+                'sleep_duration_hours': row.get('sleep_duration_hours', 7.0),
+                'sleep_onset_latency_minutes': row.get('sleep_onset_latency_minutes', 15),
+                'awakenings_count': row.get('awakenings_count', 2),
+                'total_awake_minutes': row.get('total_awake_minutes', 20),
+                'subjective_rating': row.get('subjective_rating', 7)
+            }
+            
+            # Print the input values for Debugging
+            # print(f"Sleep data for user {debug_user}:")
+            # for k, v in sleep_data.items():
+            #     print(f"  {k}: {v}")
+            
+            # Debug: Calculate each component score separately
+            calculator = sleep_quality_model.sleep_score_calculator
+            
+            # Use SleepScoreInput to validate the data
+            from src.core.models.improved_sleep_score import SleepScoreInput
+            validated_data = SleepScoreInput(**sleep_data)
+            
+            duration_score = calculator._score_duration(validated_data)
+            efficiency_score = calculator._score_efficiency(validated_data)
+            onset_score = calculator._score_onset(validated_data)
+            continuity_score = calculator._score_continuity(validated_data)
+            subjective_score = calculator._score_subjective(validated_data)
+            
+            print(f"Component scores:")
+            print(f"  Duration: {duration_score}")
+            print(f"  Efficiency: {efficiency_score}")
+            print(f"  Onset: {onset_score}")
+            print(f"  Continuity: {continuity_score}")
+            print(f"  Subjective: {subjective_score}")
+            
+            # Calculate the final score
+            score_result = calculator.calculate_score(sleep_data, include_details=True)
+            sleep_score = score_result.total_score if hasattr(score_result, 'total_score') else score_result
+            print(f"Final score: {sleep_score}")
+            
+        except Exception as e:
+            print(f"Error: {e}")
+    # DEBUGGING END: Limit to a single user for testing
+
+    for user_id in sleep_data_df['user_id'].unique():
+        # Get user sleep data
+        user_data = sleep_data_df[sleep_data_df['user_id'] == user_id].copy()
+        
+        # Skip users with very little data
+        if len(user_data) < 3:
+            continue
+        
+        # Calculate sleep scores
+        for idx, row in user_data.iterrows():
+            try:
+                # Use the sleep_score_calculator from the model
+                sleep_score = sleep_quality_model.calculate_sleep_score(
+                    row.get('sleep_efficiency', 0.8),
+                    row.get('subjective_rating', 7),
+                    {
+                        'deep_sleep_percentage': row.get('deep_sleep_percentage', 0.2),
+                        'rem_sleep_percentage': row.get('rem_sleep_percentage', 0.25),
+                        'sleep_onset_latency_minutes': row.get('sleep_onset_latency_minutes', 15),
+                        'awakenings_count': row.get('awakenings_count', 2)
+                    }
+                )
+                
+                # Store prediction
+                prediction = {
+                    'user_id': user_id,
+                    'date': row['date'],
+                    'sleep_efficiency': row.get('sleep_efficiency', 0.8),
+                    'sleep_duration_hours': row.get('sleep_duration_hours', 7.0),
+                    'predicted_sleep_score': sleep_score
+                }
+                all_predictions.append(prediction)
+            except Exception as e:
+                print(f"Error calculating sleep score for user {user_id}: {e}")
+                continue
+
+    # Save all predictions
+    if all_predictions:
+        predictions_df = pd.DataFrame(all_predictions)
+        predictions_df.to_csv(os.path.join(output_dir, 'predictions', 'sleep_score_predictions.csv'), index=False)
+        print(f"Generated sleep score predictions for {len(predictions_df)} sleep records")
+    else:
+        print("No sleep score predictions were generated")
+
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Run enhanced sleep insights demo')
     parser.add_argument('--output-dir', type=str, default='data/enhanced_demo',
                         help='Directory to save demo output')
-    parser.add_argument('--user-count', type=int, default=500,
+    parser.add_argument('--user-count', type=int, default=100,
                         help='Number of users to generate')
     parser.add_argument('--wearable-percentage', type=int, default=20,
                         help='Percentage of users with wearable devices')

@@ -5,6 +5,8 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from typing import Tuple, List, Dict, Optional
 from pydantic import BaseModel, Field
 
+from src.utils.data_validation_fix import ensure_sleep_data_format
+
 class FeatureSet(BaseModel):
     """Model to validate engineered features"""
     # User identification
@@ -222,6 +224,8 @@ class FeatureEngineering:
                     feature_data[col] = 0.0  # Default value
                 
                 feature_columns.append(col)
+        
+        feature_data = ensure_sleep_data_format(feature_data)
         
         # Scale numerical features
         feature_data = self._scale_features(feature_data, feature_columns)

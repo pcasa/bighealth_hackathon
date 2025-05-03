@@ -14,7 +14,7 @@ from src.core.models.data_models import ProgressAnalysis, SleepMetrics, Recommen
 
 
 class SleepRecommendationEngine:
-    def __init__(self, config_path='config/recommendations_config.yaml'):
+    def __init__(self, config_path='src/config/recommendations_config.yaml'):
         """Initialize the recommendation engine with templates and selection logic"""
         self.config = self._load_config(config_path)
         self.message_templates = self._load_message_templates()
@@ -28,7 +28,7 @@ class SleepRecommendationEngine:
     
     def _load_message_templates(self):
         """Load message templates from configuration"""
-        templates_path = self.config.get('templates_path', 'config/message_templates.json')
+        templates_path = self.config.get('templates_path', 'src/config/message_templates.json')
         with open(templates_path, 'r') as file:
             return json.load(file)
     
@@ -94,6 +94,9 @@ class SleepRecommendationEngine:
         
         # Calculate consistency
         days_logged = len(recent_data)
+
+        if not pd.api.types.is_datetime64_dtype(sorted_data['date']):
+            sorted_data['date'] = pd.to_datetime(sorted_data['date'])
         expected_days = min(window, (sorted_data['date'].max() - sorted_data['date'].min()).days + 1)
         consistency = days_logged / expected_days if expected_days > 0 else 0
         
@@ -131,12 +134,13 @@ class SleepRecommendationEngine:
             elif no_sleep_count >= 2:
                 trend = 'moderate_insomnia'
         
-        return ProgressAnalysis(
-            trend=trend,
-            consistency=consistency,
-            improvement_rate=efficiency_trend,
-            key_metrics=key_metrics
-        )
+        # Return as dictionary instead of ProgressAnalysis object for compatibility
+        return {
+            'trend': trend,
+            'consistency': consistency,
+            'improvement_rate': efficiency_trend,
+            'key_metrics': key_metrics.__dict__ if hasattr(key_metrics, '__dict__') else key_metrics
+        }
     
     def _calculate_sleep_efficiency(self, sleep_data):
         """Calculate sleep efficiency from available metrics"""
@@ -207,6 +211,7 @@ class SleepRecommendationEngine:
     
     def generate_recommendation(self, user_id, progress_data, profession=None, region=None):
         """Generate a personalized recommendation based on progress analysis with profession and region context"""
+        # Access attributes using dictionary style access since progress_data is now a dictionary
         trend = progress_data['trend']
         consistency = progress_data['consistency']
         key_metrics = progress_data['key_metrics']
@@ -275,11 +280,11 @@ class SleepRecommendationEngine:
         # Calculate confidence
         confidence = self.calculate_recommendation_confidence(user_id, progress_data)
         
-        return Recommendation(
-            message=message,
-            confidence=confidence,
-            category=category
-        )
+        return {
+            "message": message,
+            "confidence": confidence,
+            "category": category
+        }
     
 
     def _get_eligible_templates(self, category, user_history, recency=7):

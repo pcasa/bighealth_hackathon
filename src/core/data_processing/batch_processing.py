@@ -9,7 +9,7 @@ from multiprocessing import Pool, cpu_count
 from pydantic import Field
 from pyparsing import Dict, Optional
 
-from core.models.base_model import BaseModel
+from src.core.models.base_model import BaseModel
 from src.core.data_processing.preprocessing import DataPreprocessor
 from src.core.data_processing.feature_engineering import FeatureEngineering
 

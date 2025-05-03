@@ -13,6 +13,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime, timedelta
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from src.utils.constants import profession_categories
 from src.data_generation.base_generator import BaseDataGenerator
 
@@ -24,7 +27,7 @@ def parse_args():
     parser.add_argument(
         '--data-dir', 
         type=str, 
-        default='data/sample',
+        default='data/enhanced_demo/data',
         help='Directory containing the sample data'
     )
     

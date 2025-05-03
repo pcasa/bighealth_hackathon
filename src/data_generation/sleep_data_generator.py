@@ -149,8 +149,9 @@ class SleepDataGenerator(BaseDataGenerator):
                     # Distribute user_ids proportionally
                     result_df['user_id'] = [unique_users[i % len(unique_users)] for i in range(len(result_df))]
         else:
-            print(f"Successfully generated sleep data with user_id column. Sample values: {result_df['user_id'].head(5).tolist()}")
-        
+            unique_user_ids = result_df['user_id'].unique()[:5].tolist()
+            print(f"Successfully generated sleep data with user_id column. Sample unique users: {unique_user_ids}")
+            
         # Ensure all required columns are present, with defaults if missing
         required_columns = [
             'user_id', 'date', 'bedtime', 'sleep_onset_time', 'wake_time', 'out_bed_time',
@@ -277,336 +278,6 @@ class SleepDataGenerator(BaseDataGenerator):
         
         return result_df
     
-    # Complete fix for the _generate_daily_sleep method
-    # Ensure all variables are defined in the proper sequence
-
-    def _generate_daily_sleep(self, user, date, pattern, pattern_params, base_bedtime, base_waketime, 
-                         profession_category=None, region_category=None, temporal_quality_modifier=0):
-        """Generate sleep data for a single day with enhanced variability and temporal patterns"""
-        
-        # Add variability based on pattern, user consistency, and weekday/weekend
-        is_weekend = date.weekday() >= 5
-        
-        # Weekend adjustment - people often sleep later on weekends
-        weekend_bedtime_adjustment = 0
-        weekend_waketime_adjustment = 0
-        
-        if is_weekend:
-            weekend_bedtime_adjustment = np.random.randint(0, 90)  # Up to 1.5 hours later
-            weekend_waketime_adjustment = np.random.randint(30, 120)  # 0.5 to 2 hours later
-        
-        # Base variability from user consistency
-        sleep_consistency = user.get('sleep_consistency', 0.7)  # Default if missing
-        bedtime_variance_minutes = max(1, int(30 * (1 - sleep_consistency)))
-        waketime_variance_minutes = max(1, int(30 * (1 - sleep_consistency)))
-        
-        # Special handling for variable sleepers
-        if pattern == 'variable':
-            # Use safe dictionary access with default values
-            bedtime_variance = pattern_params.get('bedtime_variance_hours', [1, 2])
-            var_hours = np.random.uniform(bedtime_variance[0], bedtime_variance[1])
-            bedtime_variance_minutes = max(1, int(var_hours * 60))
-            waketime_variance_minutes = max(1, int(var_hours * 60))
-        
-        # Apply variance to base times
-        bedtime_delta = np.random.randint(-bedtime_variance_minutes, bedtime_variance_minutes + 1)
-        waketime_delta = np.random.randint(-waketime_variance_minutes, waketime_variance_minutes + 1)
-        
-        # Apply weekend adjustments
-        bedtime_delta += weekend_bedtime_adjustment
-        waketime_delta += weekend_waketime_adjustment
-        
-        bedtime_date = date - timedelta(days=1)  # Previous day for bedtime
-        bed_hour, bed_minute = base_bedtime.hour, base_bedtime.minute
-        bed_datetime = datetime.combine(bedtime_date.date(), time(hour=bed_hour, minute=bed_minute))
-        bed_datetime += timedelta(minutes=bedtime_delta)
-        
-        wake_hour, wake_minute = base_waketime.hour, base_waketime.minute
-        wake_datetime = datetime.combine(date.date(), time(hour=wake_hour, minute=wake_minute))
-        wake_datetime += timedelta(minutes=waketime_delta)
-        
-        # Ensure wake_datetime is after bed_datetime
-        if wake_datetime <= bed_datetime:
-            # Add at least 4 hours to wake_datetime if it's not after bed_datetime
-            wake_datetime = bed_datetime + timedelta(hours=4)
-        
-        # Calculate time in bed early - this is critical!
-        time_in_bed = (wake_datetime - bed_datetime).total_seconds() / 3600  # hours
-        
-        # ===== "Bad night" probability calculation =====
-        # Base probability of having a particularly bad night
-        bad_night_probability = 0.05  # 5% chance of a bad night for most sleepers
-        
-        # Increase for insomnia pattern
-        if pattern == 'insomnia':
-            bad_night_probability = 0.25  # 25% chance of a particularly bad night
-        elif pattern == 'variable':
-            bad_night_probability = 0.15  # 15% chance for variable sleepers
-        elif pattern == 'shift_worker':
-            bad_night_probability = 0.12  # 12% chance for shift workers
-        
-        # Adjust based on temporal quality modifier
-        # Negative modifier increases bad night probability
-        if temporal_quality_modifier < 0:
-            # Increase bad night probability when in a negative cycle
-            # The -0.3 to 0.3 modifier can change probability by up to 30%
-            bad_night_probability -= temporal_quality_modifier  # Subtract negative number = add
-        
-        # Cap the probability at 0.8 (80%)
-        bad_night_probability = min(0.8, max(0.01, bad_night_probability))
-        
-        # Determine if this is a "bad night"
-        is_bad_night = np.random.random() < bad_night_probability
-        
-        # Initialize no_sleep_night early
-        no_sleep_night = False
-        
-        # Handle pattern-specific parameters for sleep onset - safe dictionary access
-        if pattern == 'insomnia':
-            # Safe access with defaults
-            onset_range = pattern_params.get('sleep_onset_minutes', [30, 60])
-            
-            # For insomnia, modulate onset based on whether it's a "bad night"
-            if is_bad_night:
-                # Much longer onset during bad nights (45-90 minutes)
-                sleep_onset_minutes = np.random.randint(45, 90)
-            else:
-                sleep_onset_minutes = np.random.randint(onset_range[0], onset_range[1])
-                
-            # Apply temporal modifier to sleep onset latency
-            # Negative modifier increases onset time, positive decreases
-            # We apply a larger effect for insomnia pattern
-            temporal_onset_adjustment = int(-temporal_quality_modifier * 30)
-            sleep_onset_minutes += temporal_onset_adjustment
-            sleep_onset_minutes = max(5, sleep_onset_minutes)  # Ensure minimum of 5 minutes
-            
-            # Age factor - older people with insomnia often have longer sleep onset
-            if user.get('age', 30) > 60:
-                sleep_onset_minutes += np.random.randint(0, 15)
-        else:
-            # For non-insomnia patterns
-            if is_bad_night:
-                # Even normal sleepers have occasional nights with longer onset
-                sleep_onset_minutes = np.random.randint(20, 45)
-            else:
-                sleep_onset_minutes = np.random.randint(5, 20)
-                
-            # Apply temporal modifier to sleep onset latency
-            # Smaller effect for non-insomnia patterns
-            temporal_onset_adjustment = int(-temporal_quality_modifier * 15)
-            sleep_onset_minutes += temporal_onset_adjustment
-            sleep_onset_minutes = max(3, sleep_onset_minutes)  # Ensure minimum of 3 minutes
-                
-            # Add profession impact - high stress jobs may have longer sleep onset
-            if profession_category in ['healthcare', 'tech'] and np.random.random() < 0.3:
-                sleep_onset_minutes += np.random.randint(5, 15)
-        
-        # Calculate sleep onset time
-        sleep_onset_datetime = bed_datetime + timedelta(minutes=sleep_onset_minutes)
-        
-        # Generate sleep duration based on pattern - safe dictionary access
-        sleep_duration_range = pattern_params.get('sleep_duration_hours', [6, 8])
-        
-        # Apply temporal quality modifier to the duration range
-        # Positive modifier increases sleep duration, negative decreases
-        duration_adjustment = temporal_quality_modifier * 1.5  # Scale by 1.5 hours for significant effect
-        
-        if is_bad_night:
-            # Substantially shorter sleep on bad nights (1-3 hours below minimum)
-            min_duration = max(2, sleep_duration_range[0] - np.random.uniform(1, 3) + duration_adjustment)
-            max_duration = max(min_duration + 1, sleep_duration_range[0] - 0.5 + duration_adjustment)
-            sleep_hours = np.random.uniform(min_duration, max_duration)
-        else:
-            adjusted_min = sleep_duration_range[0] + duration_adjustment
-            adjusted_max = sleep_duration_range[1] + duration_adjustment
-            sleep_hours = np.random.uniform(adjusted_min, adjusted_max)
-        
-        # Ensure reasonable limits
-        sleep_hours = max(0, min(14, sleep_hours))  # Cap between 0-14 hours
-        
-        # Weekend adjustment for sleep duration
-        if is_weekend and pattern != 'shift_worker' and not is_bad_night:
-            sleep_hours += np.random.uniform(0, 1)  # Up to 1 hour extra sleep on weekends
-        
-        # Generate awakenings - safe dictionary access
-        awakening_range = pattern_params.get('awakenings_count', [0, 2])
-        
-        # Adjust awakenings for bad nights and temporal patterns
-        if is_bad_night:
-            # More frequent awakenings on bad nights
-            min_awakenings = awakening_range[1]
-            max_awakenings = min_awakenings + np.random.randint(2, 5)
-            
-            # Additional effect from temporal patterns (negative = more awakenings)
-            awakening_adjustment = int(-temporal_quality_modifier * 2)
-            max_awakenings += awakening_adjustment
-            
-            awakenings = int(np.random.randint(min_awakenings, max_awakenings + 1))
-        else:
-            # Base awakenings
-            base_min = awakening_range[0]
-            base_max = awakening_range[1]
-            
-            # Apply temporal modifier
-            awakening_adjustment = int(-temporal_quality_modifier * 1.5)
-            min_awakenings = max(0, base_min + awakening_adjustment)
-            max_awakenings = max(min_awakenings + 1, base_max + awakening_adjustment)
-            
-            awakenings = int(np.random.randint(min_awakenings, max_awakenings + 1))
-        
-        # Age impacts awakenings - older people tend to wake more
-        if user.get('age', 30) > 60:
-            awakenings += np.random.randint(0, 2)
-        
-        # Calculate total time awake during night - safe dictionary access
-        awakening_duration_range = pattern_params.get('awakening_duration_minutes', [3, 10])
-        
-        # Adjust awakening duration for bad nights
-        if is_bad_night:
-            # Longer periods awake on bad nights
-            min_awakening = awakening_duration_range[1]
-            max_awakening = min_awakening + np.random.randint(10, 30)
-            
-            # Apply temporal effect (negative modifier = longer awakenings)
-            awakening_adjustment = int(-temporal_quality_modifier * 10)
-            max_awakening += awakening_adjustment
-            
-            avg_awakening_minutes = np.random.randint(min_awakening, max_awakening)
-        else:
-            base_min = awakening_duration_range[0]
-            base_max = awakening_duration_range[1]
-            
-            # Apply temporal modifier
-            awakening_adjustment = int(-temporal_quality_modifier * 5)
-            min_awakening = max(1, base_min + awakening_adjustment)
-            max_awakening = max(min_awakening + 2, base_max + awakening_adjustment)
-            
-            avg_awakening_minutes = np.random.randint(min_awakening, max_awakening)
-        
-        total_awake_minutes = awakenings * avg_awakening_minutes
-        
-        # Chance of complete sleepless night for insomnia
-        # Significantly higher chance during negative temporal periods
-        if pattern == 'insomnia' and is_bad_night:
-            no_sleep_probability = 0.15  # Base probability
-            
-            # Adjust based on temporal modifier
-            if temporal_quality_modifier < 0:
-                no_sleep_probability -= temporal_quality_modifier * 2  # Double the effect
-                no_sleep_probability = min(0.6, no_sleep_probability)  # Cap at 60%
-            
-            if np.random.random() < no_sleep_probability:
-                no_sleep_night = True
-                sleep_hours = 0
-                awakenings = 0  # Can't have awakenings if no sleep
-                sleep_onset_minutes = (wake_datetime - bed_datetime).total_seconds() / 60  # Never fell asleep
-                total_awake_minutes = (wake_datetime - bed_datetime).total_seconds() / 60  # Awake all night
-        
-        # Calculate sleep efficiency
-        sleep_efficiency = 0 if no_sleep_night or time_in_bed == 0 else sleep_hours / time_in_bed
-        
-        # Adjust sleep efficiency based on pattern parameters and temporal factors
-        if 'sleep_efficiency' in pattern_params:
-            min_efficiency, max_efficiency = pattern_params['sleep_efficiency']
-            # For bad nights, allow efficiency to go below the pattern minimum
-            if is_bad_night:
-                min_efficiency = max(0.15, min_efficiency - 0.25)  # Much lower minimum on bad nights
-                max_efficiency = min(max_efficiency, min_efficiency + 0.15)  # Lower maximum too
-            
-            # Apply temporal effect directly to efficiency
-            efficiency_adjustment = temporal_quality_modifier * 0.15  # Scale the effect (±15% maximum)
-            min_efficiency += efficiency_adjustment
-            max_efficiency += efficiency_adjustment
-            
-            # Ensure valid ranges
-            min_efficiency = max(0.0, min(0.9, min_efficiency))
-            max_efficiency = max(min_efficiency + 0.05, min(0.95, max_efficiency))
-            
-            # For no sleep nights, efficiency is 0
-            if no_sleep_night:
-                sleep_efficiency = 0
-            else:
-                sleep_efficiency = max(min_efficiency, min(sleep_efficiency, max_efficiency))
-        else:
-            # Default efficiency bounds with bad night and temporal adjustments
-            if is_bad_night:
-                min_bound = 0.4  # Lower minimum for bad nights
-                max_bound = 0.7  # Lower maximum for bad nights
-            else:
-                min_bound = 0.7
-                max_bound = 0.95
-                
-            # Apply temporal effect
-            efficiency_adjustment = temporal_quality_modifier * 0.15
-            min_bound += efficiency_adjustment
-            max_bound += efficiency_adjustment
-            
-            # Ensure valid ranges
-            min_bound = max(0.0, min(0.9, min_bound))
-            max_bound = max(min_bound + 0.05, min(0.95, max_bound))
-                
-            # For no sleep nights, efficiency is 0
-            if no_sleep_night:
-                sleep_efficiency = 0
-            else:
-                sleep_efficiency = max(min_bound, min(sleep_efficiency, max_bound))
-        
-        # Generate subjective rating
-        if no_sleep_night:
-            # For no sleep nights, rating is very low
-            subjective_rating = np.random.randint(1, 3)
-        elif is_bad_night:
-            # For bad nights, use lower range with temporal influence
-            base_max_rating = 5  # Base maximum for bad nights
-            
-            # Apply temporal effect (negative = lower ratings)
-            rating_adjustment = int(temporal_quality_modifier * 2)
-            max_rating = max(3, min(7, base_max_rating + rating_adjustment))
-            
-            subjective_rating = np.random.randint(1, max_rating)
-        else:
-            # Normal nights
-            rating_range = pattern_params.get('subjective_rating_range', [3, 9])
-            
-            # Apply temporal effect
-            rating_adjustment = int(temporal_quality_modifier * 2)
-            min_rating = max(1, rating_range[0] + rating_adjustment)
-            max_rating = max(min_rating + 1, min(10, rating_range[1] + rating_adjustment))
-            
-            subjective_rating = np.random.randint(min_rating, max_rating + 1)
-        
-        # Get season using the base class method
-        season = self.get_season_from_date(date)
-        
-        # CRITICAL: Ensure out of bed time is after wake time
-        out_bed_time = wake_datetime + timedelta(minutes=np.random.randint(5, 30))
-        
-        # Create complete sleep record with temporal information
-        sleep_record = {
-            'user_id': user.get('user_id'),  # CRITICAL: Include user_id!
-            'date': date.strftime('%Y-%m-%d'),
-            'bedtime': bed_datetime.strftime('%Y-%m-%d %H:%M:%S'),
-            'sleep_onset_time': sleep_onset_datetime.strftime('%Y-%m-%d %H:%M:%S'),
-            'wake_time': wake_datetime.strftime('%Y-%m-%d %H:%M:%S'),
-            'out_bed_time': out_bed_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'time_in_bed_hours': float(time_in_bed),
-            'sleep_duration_hours': float(sleep_hours),
-            'sleep_onset_latency_minutes': int(sleep_onset_minutes),
-            'awakenings_count': int(awakenings),
-            'total_awake_minutes': int(total_awake_minutes),
-            'sleep_efficiency': float(sleep_efficiency),
-            'subjective_rating': int(subjective_rating),
-            'is_weekend': bool(is_weekend),
-            'profession_category': profession_category,
-            'region_category': region_category,
-            'season': season,
-            'no_sleep': no_sleep_night,  # Track complete sleepless nights
-            'is_bad_night': is_bad_night,  # Flag for bad nights for debugging
-            'temporal_modifier': temporal_quality_modifier  # Store for analysis
-        }
-        
-        return sleep_record
-    
     # Updates to SleepDataGenerator in sleep_data_generator.py
 
     # Updated parameter list in the function signature:
@@ -614,6 +285,10 @@ class SleepDataGenerator(BaseDataGenerator):
                         profession_category=None, region_category=None, temporal_quality_modifier=0):
         """Generate sleep data for a single day with enhanced variability and temporal patterns"""
         
+        # Ensure date is a datetime object
+        if isinstance(date, str):
+            date = pd.to_datetime(date)
+
         # Add variability based on pattern, user consistency, and weekday/weekend
         is_weekend = date.weekday() >= 5
         
@@ -655,12 +330,14 @@ class SleepDataGenerator(BaseDataGenerator):
         wake_datetime = datetime.combine(date.date(), time(hour=wake_hour, minute=wake_minute))
         wake_datetime += timedelta(minutes=waketime_delta)
 
-        # Ensure wake_datetime is after bed_datetime 
+        # Ensure wake_datetime is after bed_datetime
         if wake_datetime <= bed_datetime:
             # Add at least 4 hours to wake_datetime if it's not after bed_datetime
             wake_datetime = bed_datetime + timedelta(hours=4)
-            # Also update the time_in_bed calculation
-            time_in_bed = (wake_datetime - bed_datetime).total_seconds() / 3600
+        # Ensure time in bed doesn't exceed 24 hours
+        elif (wake_datetime - bed_datetime).total_seconds() > 24 * 3600:
+            # Cap the maximum time in bed to 24 hours
+            wake_datetime = bed_datetime + timedelta(hours=24)
         
         # ===== MODIFIED: "Bad night" probability calculation influenced by temporal patterns =====
         # Base probability of having a particularly bad night
@@ -843,6 +520,11 @@ class SleepDataGenerator(BaseDataGenerator):
         
         # Calculate sleep efficiency
         time_in_bed = (wake_datetime - bed_datetime).total_seconds() / 3600  # hours
+        # Add after calculating time_in_bed
+        if time_in_bed > 24.0:
+            # Cap to 24 hours and adjust wake_datetime
+            time_in_bed = 24.0
+            wake_datetime = bed_datetime + timedelta(hours=24)
         sleep_efficiency = 0 if time_in_bed == 0 else sleep_hours / time_in_bed  # Avoid division by zero
         
         # ===== MODIFIED: Apply direct temporal effect to sleep efficiency =====
@@ -956,6 +638,11 @@ class SleepDataGenerator(BaseDataGenerator):
     def _generate_user_sleep_data(self, user, start_date, end_date, profession_category=None, region_category=None):
         """Generate sleep data for a single user over a time period with temporal patterns"""
         user_data = []
+
+        if isinstance(start_date, str):
+            start_date = pd.to_datetime(start_date)
+        if isinstance(end_date, str):
+            end_date = pd.to_datetime(end_date)
         
         # Extract user details
         user_id = user.get('user_id')

@@ -1,5 +1,6 @@
 
 
+import numpy as np
 import pandas as pd
 import logging
 
@@ -9,7 +10,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('ensure_valid_numeric_fields.log')
+        logging.FileHandler('data/logs/ensure_valid_numeric_fields.log')
     ]
 )
 
@@ -35,7 +36,8 @@ def ensure_valid_numeric_fields(df):
         'light_sleep_percentage': (0.0, 1.0),
         'awake_percentage': (0.0, 1.0),
         'age_normalized': (0.0, 1.0),
-        'subjective_rating': (1, 10)
+        'subjective_rating': (1, 10),
+        'time_in_bed_hours': (0.0, 24.0)
     }
     
     logger.info("Ensuring numeric fields meet validation requirements while preserving variation")
@@ -53,7 +55,7 @@ def ensure_valid_numeric_fields(df):
                 )
     
     # Handle bounded fields - only fix values outside allowed range
-    # for field, (min_val, max_val) in bounded_fields.items():
+    for field, (min_val, max_val) in bounded_fields.items():
         if field in df.columns:
             # Count extreme outliers
             extreme_below = (df[field] < min_val - 0.1).sum() if pd.api.types.is_numeric_dtype(df[field]) else 0

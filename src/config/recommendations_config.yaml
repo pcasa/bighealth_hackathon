@@ -1,7 +1,7 @@
 # Recommendation Engine Configuration
 
 # Paths to resources
-templates_path: 'config/message_templates.json'
+templates_path: 'src/config/message_templates.json'
 history_path: 'data/user_message_history.json'
 
 # Analysis settings

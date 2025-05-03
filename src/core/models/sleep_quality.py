@@ -87,6 +87,7 @@ class SleepQualityModel:
         
         self.model = None
         self.feature_columns = None
+        self.sleep_score_calculator = ImprovedSleepScoreCalculator()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     """
@@ -662,7 +663,8 @@ class SleepQualityModel:
             sleep_data.update(additional_metrics)
         
         # Use the new calculator
-        return self.sleep_score_calculator.calculate_score(sleep_data)
+        result = self.sleep_score_calculator.calculate_score(sleep_data, include_details=True)
+        return result.total_score if hasattr(result, 'total_score') else result
     
     def calculate_comprehensive_sleep_score(sleep_data, include_details=True):
         """

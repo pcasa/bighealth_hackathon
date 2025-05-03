@@ -32,7 +32,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('generate_training_data.log')
+        logging.FileHandler('data/logs/generate_training_data.log')
     ]
 )
 

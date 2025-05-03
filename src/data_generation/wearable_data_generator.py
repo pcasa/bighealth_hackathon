@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import yaml
 
 from src.data_generation.base_generator import BaseDataGenerator
+from src.utils.data_validation_fix import ensure_datetime
 
 class WearableDataGenerator(BaseDataGenerator):
     """
@@ -66,15 +67,23 @@ class WearableDataGenerator(BaseDataGenerator):
 
     def _generate_record_wearable_data(self, record):
         """Generate wearable data for a single sleep record with division by zero protection"""
+        for field in ['bedtime', 'sleep_onset_time', 'wake_time']:
+            if field in record:
+                if isinstance(record[field], str):
+                    try:
+                        record[field] = pd.to_datetime(record[field])
+                    except (ValueError, TypeError) as e:
+                        print(f"Error converting {field} to datetime: {e}")
+
         device_type = record['device_type']
         device_params = self.device_params[device_type]
         device_profile = self.device_config[device_type]
         
         # Convert string times to datetime objects
         try:
-            bedtime = datetime.strptime(record['bedtime'], '%Y-%m-%d %H:%M:%S')
-            sleep_onset = datetime.strptime(record['sleep_onset_time'], '%Y-%m-%d %H:%M:%S')
-            wake_time = datetime.strptime(record['wake_time'], '%Y-%m-%d %H:%M:%S')
+            bedtime = pd.to_datetime(record['bedtime'])
+            sleep_onset = pd.to_datetime(record['sleep_onset_time'])
+            wake_time = pd.to_datetime(record['wake_time'])
         except (ValueError, TypeError) as e:
             print(f"Error parsing datetime: {e}")
             # Provide default values if datetime parsing fails
