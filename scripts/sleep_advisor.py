@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument(
         '--config', 
         type=str, 
-        default='config/recommendations_config.yaml',
+        default='src/config/recommendations_config.yaml',
         help='Path to recommendations configuration file'
     )
     

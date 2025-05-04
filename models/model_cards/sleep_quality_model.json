@@ -1,7 +1,7 @@
 {
   "model_name": "Sleep Quality Prediction Model",
   "version": "1.0",
-  "created_date": "2025-05-03",
+  "created_date": "2025-05-04",
   "model_type": "LSTM Neural Network",
   "description": "Sequence-based deep learning model for sleep quality analysis and prediction",
   "features": [
@@ -41,8 +41,8 @@
     "dropout": 0.2
   },
   "performance_metrics": {
-    "mse": 0.05904489383101463,
-    "rmse": 0.24299155094573685,
+    "mse": 0.05303437262773514,
+    "rmse": 0.23029192914154664,
     "features": [
       "sleep_duration_hours",
       "sleep_efficiency",
@@ -67,14 +67,14 @@
     ]
   },
   "training_data": {
-    "num_users": 300,
-    "num_records": 76614,
-    "date_range": "2024-01-01 00:00:00 to 2024-12-31 00:00:00"
+    "num_users": 100,
+    "num_records": 5518,
+    "date_range": "2024-01-01 00:00:00 to 2024-03-31 00:00:00"
   },
   "sample_outputs": {
     "individual_prediction": {
       "user_id": "sample_user_01",
-      "date": "2025-05-02",
+      "date": "2025-05-03",
       "predicted_sleep_efficiency": 0.87,
       "prediction_confidence": 0.85,
       "sleep_score": 91,

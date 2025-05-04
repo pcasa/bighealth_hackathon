@@ -1,4 +1,7 @@
 # src/core/services/sleep_service.py
+import pandas as pd
+
+
 class SleepService:
     def __init__(self, repository, sleep_quality_model, recommendation_engine, preprocessor):
         self.repository = repository

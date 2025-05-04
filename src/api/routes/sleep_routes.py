@@ -76,6 +76,6 @@ async def get_recommendation(user_id: str, days: int = 30, service: SleepService
 async def get_detailed_sleep_score(user_id: str, date: str = None, service: SleepService = Depends(get_sleep_service)):
    """Get a detailed sleep score breakdown for a user's sleep record"""
    try:
-       return await service.get_detailed_sleep_score(user_id, date)
+       return await service.analyze_sleep(user_id, date)
    except Exception as e:
        raise HTTPException(status_code=500, detail=str(e))

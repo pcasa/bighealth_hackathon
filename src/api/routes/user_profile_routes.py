@@ -2,7 +2,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Dict, Optional
 
-from src.api.models.user_models import UserProfile, UserProfileCreate, UserProfileUpdate
+# from src.api.models.user_models import UserProfileCreate, UserProfileUpdate
+from src.core.models.data_models import UserProfile
 from src.core.services.user_service import UserService
 from src.core.repositories.data_repository import DataRepository
 
@@ -33,22 +34,22 @@ async def get_user(user_id: str, service: UserService = Depends(get_user_service
         raise HTTPException(status_code=404, detail=f"User {user_id} not found")
     return user
 
-@router.post("/", response_model=Dict, status_code=201)
-async def create_user(user: UserProfileCreate, service: UserService = Depends(get_user_service)):
-    """Create a new user profile"""
-    return await service.create_user(user.dict())
+# @router.post("/", response_model=Dict, status_code=201)
+# async def create_user(user: UserProfileCreate, service: UserService = Depends(get_user_service)):
+#     """Create a new user profile"""
+#     return await service.create_user(user.dict())
 
-@router.put("/{user_id}", response_model=Dict)
-async def update_user(
-    user_id: str, 
-    user_update: UserProfileUpdate, 
-    service: UserService = Depends(get_user_service)
-):
-    """Update a user profile"""
-    user = await service.update_user(user_id, user_update.dict(exclude_unset=True))
-    if not user:
-        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
-    return user
+# @router.put("/{user_id}", response_model=Dict)
+# async def update_user(
+#     user_id: str, 
+#    user_update: UserProfileUpdate, 
+#     service: UserService = Depends(get_user_service)
+# ):
+#     """Update a user profile"""
+#     user = await service.update_user(user_id, user_update.dict(exclude_unset=True))
+#     if not user:
+#         raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+#     return user
 
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(user_id: str, service: UserService = Depends(get_user_service)):

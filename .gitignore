@@ -175,7 +175,25 @@ cython_debug/
 
 .DS_Store
 
-data/raw/
+data/raw/**.csv
+data/logs/**
+data/enhanced_demo/data/**
+data/enhanced_demo/predictions/**
+data/enhanced_demo/recommendations/**
+data/enhanced_demo/visualizations/**
+data/sample/**
+data/enhanced_demo/users.csv
+data/enhanced_demo/**.json
 demo/
-data/
-reports/
+reports/**
+
+!data/logs/**/.gitkeep
+!data/raw/**/.gitkeep
+!data/sample/**/.gitkeep
+!data/enhanced_demo/**/.gitkeep
+!data/enhanced_demo/data/**/.gitkeep
+!data/enhanced_demo/predictions/**/.gitkeep
+!data/enhanced_demo/recommendations/**/.gitkeep
+!data/enhanced_demo/visualizations/**/.gitkeep
+
+!reports/**/.gitkeep

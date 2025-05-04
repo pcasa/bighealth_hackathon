@@ -441,9 +441,25 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
             print(f"  Continuity: {continuity_score}")
             print(f"  Subjective: {subjective_score}")
             
-            # Calculate the final score
-            score_result = calculator.calculate_score(sleep_data, include_details=True)
-            sleep_score = score_result.total_score if hasattr(score_result, 'total_score') else score_result
+            # Use SleepQualityModel's method which might return an object or a simple score
+            score_result = sleep_quality_model.calculate_sleep_score(
+                sleep_data.get('sleep_efficiency', 0.8),
+                sleep_data.get('subjective_rating', 7),
+                {
+                    'deep_sleep_percentage': sleep_data.get('deep_sleep_percentage', 0.2),
+                    'rem_sleep_percentage': sleep_data.get('rem_sleep_percentage', 0.25),
+                    'sleep_onset_latency_minutes': sleep_data.get('sleep_onset_latency_minutes', 15),
+                    'awakenings_count': sleep_data.get('awakenings_count', 2)
+                }
+            )
+
+            # Handle the result appropriately based on the SleepQualityModel's return type
+            if isinstance(score_result, dict) and 'total_score' in score_result:
+                sleep_score = score_result['total_score']
+            elif hasattr(score_result, 'total_score'):
+                sleep_score = score_result.total_score
+            else:
+                sleep_score = score_result
             print(f"Final score: {sleep_score}")
             
         except Exception as e:
