@@ -52,8 +52,8 @@ def create_enhanced_demo_users(config, count=500, seed=42):
     all_users = user_generator.generate_users(count=count)
     
     # Add created_at dates distributed throughout the year
-    start_date = datetime(2024, 1, 1)
-    end_date = datetime(2024, 10, 20)  # End before our cutoff to allow for data generation
+    start_date = datetime(2024, 5, 1)
+    end_date = datetime(2025, 4, 4)  # End before our cutoff to allow for data generation
     
     # Generate timestamps - more users in recent months (exponential distribution)
     days_range = (end_date - start_date).days
@@ -290,6 +290,9 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
 
     # Set random seed for reproducibility
     np.random.seed(seed)
+
+    # Set global end date (current date)
+    global_end_date = datetime.now()
     
     # Step 1: Generate users distributed throughout the year
     # Import the function from data_generation_script
@@ -301,8 +304,72 @@ def run_enhanced_demo(output_dir='data/enhanced_demo', user_count=500, wearable_
     # Import the function from data_generation_script
     from data_generation_script import SleepDataGenerator
     sleep_data_gen = SleepDataGenerator(config_path='src/config/data_generation_config.yaml')
-    sleep_data_df = sleep_data_gen.generate_sleep_data(users_df)
+
+    # Set global end date (current date)
+    global_end_date = datetime.now()
+    
+    # Generate users with created_at dates
+    users_df = create_enhanced_demo_users(config, count=user_count, seed=seed)
+    users_df.to_csv(os.path.join(output_dir, 'data', 'users.csv'), index=False)
+    
+    # Process each user individually to respect their creation date
+    all_sleep_data = []
+    user_log_counts = {}
+    
+    for _, user in users_df.iterrows():
+        user_id = user['user_id']
+        
+        # Parse user creation date
+        created_at = datetime.strptime(user['created_at'], '%Y-%m-%d %H:%M:%S')
+        
+        # User's start date is their creation date
+        user_start_date = created_at
+        
+        # End date is either now or max days after creation (whichever is sooner)
+        max_days_of_data = 120  # Maximum days of data after account creation
+        user_end_date = min(
+            created_at + timedelta(days=max_days_of_data),
+            global_end_date
+        )
+        
+        # Create a single-user dataframe for the generator
+        user_df = pd.DataFrame([user.to_dict()])
+        
+        # Generate sleep data for this user and date range
+        user_sleep_data = sleep_data_gen.generate_sleep_data(
+            user_df,
+            start_date=user_start_date,
+            end_date=user_end_date
+        )
+        
+        # Log the count of sleep records generated
+        log_count = len(user_sleep_data)
+        user_log_counts[user_id] = log_count
+        print(f"Generated {log_count} sleep logs for user {user_id}")
+        
+        all_sleep_data.append(user_sleep_data)
+    
+    # Combine all user data
+    sleep_data_df = pd.concat(all_sleep_data)
     sleep_data_df.to_csv(os.path.join(output_dir, 'data', 'sleep_data.csv'), index=False)
+    
+    # Print summary of records per user
+    print("\nSleep log generation summary:")
+    print(f"Total users: {len(user_log_counts)}")
+    print(f"Total sleep logs: {sum(user_log_counts.values())}")
+    print(f"Average logs per user: {sum(user_log_counts.values()) / len(user_log_counts):.1f}")
+    print(f"Min logs per user: {min(user_log_counts.values()) if user_log_counts else 0}")
+    print(f"Max logs per user: {max(user_log_counts.values()) if user_log_counts else 0}")
+    
+    # Log users with fewer than 3 records (minimum for analysis)
+    users_with_insufficient_data = [uid for uid, count in user_log_counts.items() if count < 3]
+    if users_with_insufficient_data:
+        print(f"\nWARNING: {len(users_with_insufficient_data)} users have fewer than 3 sleep logs (minimum required for analysis):")
+        for uid in users_with_insufficient_data[:10]:  # Show first 10
+            print(f"  - User {uid}: {user_log_counts[uid]} logs")
+        if len(users_with_insufficient_data) > 10:
+            print(f"  - ... and {len(users_with_insufficient_data) - 10} more")
+    
     
     # Step 3: Generate wearable data for a percentage of users
     print(f"\nGenerating wearable data for {wearable_percentage}% of users...")

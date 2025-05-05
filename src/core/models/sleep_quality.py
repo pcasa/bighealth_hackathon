@@ -496,6 +496,19 @@ class SleepQualityModel:
 
     def train(self, train_data, val_data=None, sequence_length=7):
         """Train the sleep quality model"""
+
+        wearable_features = [col for col in train_data.columns if col in [
+            'deep_sleep_percentage', 'light_sleep_percentage', 'rem_sleep_percentage',
+            'heart_rate_variability', 'average_heart_rate', 'blood_oxygen'
+        ]]
+        
+        has_wearable_data = len(wearable_features) > 0
+        print(f"Training with {len(wearable_features)} wearable features: {wearable_features}")
+        
+        # Preprocess data - add wearable features to the model config
+        if has_wearable_data and 'features' in self.config:
+            self.config['features'].extend([f for f in wearable_features if f not in self.config['features']])
+        
         # Preprocess data
         X_train, y_train, _, _, available_features = self.preprocess_data(train_data, sequence_length)
         
@@ -517,6 +530,11 @@ class SleepQualityModel:
         hidden_size = self.config['hyperparameters']['hidden_size']
         num_layers = self.config['hyperparameters']['num_layers']
         dropout = self.config['hyperparameters']['dropout']
+
+        # If we have wearable data, consider increasing model capacity
+        if has_wearable_data:
+            hidden_size = int(hidden_size * 1.5)  # Increase hidden size for more capacity
+        
         
         self.model = SleepQualityLSTM(input_size, hidden_size, num_layers, dropout).to(self.device)
         
@@ -579,7 +597,8 @@ class SleepQualityModel:
         return {
             'train_losses': train_losses,
             'val_losses': val_losses,
-            'features': available_features
+            'features': available_features,
+            'wearable_features': wearable_features if has_wearable_data else []
         }
     
     def predict(self, data, sequence_length=7):

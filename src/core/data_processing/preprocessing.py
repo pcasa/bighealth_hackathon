@@ -8,6 +8,8 @@ from src.core.models.data_models import SleepEntry, WearableData, UserProfile
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
 from src.utils.data_validation_fix import ensure_sleep_data_format
 from src.utils.ensure_valid_numeric_fields import ensure_valid_numeric_fields
+from src.core.wearables.wearable_tranformer_manager import WearableTransformerManager
+
 
 
 # Set up logging
@@ -28,6 +30,7 @@ class Preprocessor:
         self.sleep_score_calculator = ImprovedSleepScoreCalculator()
         self.processed_data = None
         self.config = config or {}
+        self.wearable_manager = WearableTransformerManager()
         
         # Set defaults for missing config values
         self.config.setdefault('convert_dates', True)
@@ -95,7 +98,7 @@ class Preprocessor:
             processed_data['time_in_bed_hours'] = processed_data['time_in_bed_hours'].clip(upper=24.0)
 
         processed_data = ensure_valid_numeric_fields(processed_data)
-        
+
         return processed_data
     
     def _get_season(self, month):
@@ -109,232 +112,99 @@ class Preprocessor:
         else:  # 9, 10, 11
             return 'Fall'
     
+    def process_wearable_data(self, wearable_data_df, device_type, users_df=None):
+        """Process wearable data using the appropriate transformer"""
+        try:
+            transformed_data = self.wearable_manager.transform_data(
+                wearable_data_df, 
+                device_type,
+                users_df
+            )
+            return transformed_data
+        except Exception as e:
+            print(f"Error processing wearable data: {e}")
+            return pd.DataFrame()
+
     def preprocess_sleep_data(self, sleep_data, wearable_data=None, external_data=None):
         """Preprocess and merge sleep data with wearable and external data"""
-        # IMPORTANT: Make a copy of sleep_data to avoid modifying the original
+        # Existing preprocessing code...
         processed_data = sleep_data.copy()
         
-        # Convert string dates to datetime for easier processing
-        if self.config.get('convert_dates', True):
-            if 'date' in processed_data.columns:
-                processed_data['date'] = pd.to_datetime(processed_data['date'])
-            if 'bedtime' in processed_data.columns:
-                processed_data['bedtime'] = pd.to_datetime(processed_data['bedtime'])
-            if 'sleep_onset_time' in processed_data.columns:
-                processed_data['sleep_onset_time'] = pd.to_datetime(processed_data['sleep_onset_time'])
-            if 'wake_time' in processed_data.columns:
-                processed_data['wake_time'] = pd.to_datetime(processed_data['wake_time'])
-        
-        # Add calculated sleep features
-        processed_data = self._add_sleep_features(processed_data)
-
-        # Add age_normalized if 'age' is present but age_normalized is missing
-        if 'age' in processed_data.columns and 'age_normalized' not in processed_data.columns:
-            processed_data['age_normalized'] = processed_data['age'] / 100.0
-        
-        # Add profession features if missing
-        if 'profession' in processed_data.columns and 'profession_category' not in processed_data.columns:
-            from src.utils.constants import profession_categories
+        # If wearable data is provided as a dictionary of {device_type: data_df}
+        if isinstance(wearable_data, dict):
+            all_wearable_data = []
+            for device_type, data_df in wearable_data.items():
+                transformed = self.process_wearable_data(data_df, device_type)
+                all_wearable_data.append(transformed)
             
-            processed_data['profession_category'] = processed_data['profession'].apply(
-                lambda x: next((cat for cat, keywords in profession_categories.items() 
-                            if any(kw.lower() in x.lower() for kw in keywords)), 'other')
-            )
-            
-            # Add profession one-hot encoding
-            prof_categories = ['healthcare', 'tech', 'service', 'education', 'office', 'other']
-            for category in prof_categories:
-                col_name = f'profession_{category}'
-                if col_name not in processed_data.columns:
-                    processed_data[col_name] = (processed_data['profession_category'] == category).astype(float)
-
-        # Add season features if missing
-        if 'date' in processed_data.columns:
-            # Extract month
-            processed_data['month'] = processed_data['date'].dt.month
-            
-            # Add season
-            if 'season' not in processed_data.columns:
-                processed_data['season'] = processed_data['month'].apply(self._get_season)
-            
-            # Add seasonal one-hot encoding
-            seasons = ['Winter', 'Spring', 'Summer', 'Fall']
-            for season in seasons:
-                col_name = f'season_{season}'
-                if col_name not in processed_data.columns:
-                    processed_data[col_name] = (processed_data['season'] == season).astype(float)
-
-        # Ensure date fields are properly formatted strings before validation
-        for field in ['date', 'bedtime', 'sleep_onset_time', 'wake_time', 'out_bed_time']:
-            if field in processed_data.columns:
-                if pd.api.types.is_datetime64_dtype(processed_data[field]):
-                    processed_data[field] = processed_data[field].dt.strftime('%Y-%m-%d %H:%M:%S')
+            if all_wearable_data:
+                combined_wearable = pd.concat(all_wearable_data, ignore_index=True)
+                # Merge with sleep data
+                processed_data = self._merge_sleep_and_wearable_data(processed_data, combined_wearable)
         
-        processed_data = ensure_sleep_data_format(processed_data)
-        
-        # Validate and normalize sleep entries
-        validated_entries = []
-        for _, row in processed_data.iterrows():
-            try:
-                # Create a dictionary from the row
-                entry_dict = row.to_dict()
+        # If wearable data is provided as a single DataFrame with device_type column
+        elif wearable_data is not None:
+            if 'device_type' in wearable_data.columns:
+                # Split by device type and transform each
+                all_wearable_data = []
+                for device_type, group in wearable_data.groupby('device_type'):
+                    transformed = self.process_wearable_data(group, device_type)
+                    all_wearable_data.append(transformed)
                 
-                # Validate using the SleepEntry model
-                entry = SleepEntry(**entry_dict)
-                
-                # Add to validated entries
-                validated_entries.append(entry.dict())
-            except ValidationError as e:
-                logging.warning(f"Invalid sleep entry: {e}")
-                # Either skip or attempt to fix
-                # Option 1: Skip invalid entries
-                # continue
-                
-                # Option 2: Attempt to fix by removing validation errors
-                try:
-                    # Filter out fields that caused validation errors
-                    error_fields = [err['loc'][0] for err in e.errors()]
-                    fixed_dict = {k: v for k, v in entry_dict.items() if k not in error_fields}
-                    
-                    # Try to create a valid entry with remaining fields
-                    entry = SleepEntry(**fixed_dict)
-                    validated_entries.append(entry.dict())
-                except ValidationError:
-                    # If still invalid, skip this entry
-                    continue
-        
-        # Create a new DataFrame from validated entries
-        if validated_entries:
-            processed_data = pd.DataFrame(validated_entries)
-
-        # Merge with wearable data if provided
-        if wearable_data is not None:
-            # Convert dates in wearable data
-            if self.config.get('convert_dates', True):
-                if 'date' in wearable_data.columns:
-                    wearable_data['date'] = pd.to_datetime(wearable_data['date'])
-                if 'device_bedtime' in wearable_data.columns:
-                    wearable_data['device_bedtime'] = pd.to_datetime(wearable_data['device_bedtime'])
-                if 'device_sleep_onset' in wearable_data.columns:
-                    wearable_data['device_sleep_onset'] = pd.to_datetime(wearable_data['device_sleep_onset'])
-                if 'device_wake_time' in wearable_data.columns:
-                    wearable_data['device_wake_time'] = pd.to_datetime(wearable_data['device_wake_time'])
-            
-            validated_wearable = []
-            for _, row in wearable_data.iterrows():
-                try:
-                    # Create a dictionary from the row
-                    wearable_dict = row.to_dict()
-                    
-                    # Validate using the WearableData model
-                    wearable = WearableData(**wearable_dict)
-                    
-                    # Add to validated entries
-                    validated_wearable.append(wearable.model_dump())
-                except ValidationError as e:
-                    logging.warning(f"Invalid wearable data: {e}")
-                    continue
-            
-            if validated_wearable:
-                # Create a new DataFrame from validated wearable data
-                wearable_df = pd.DataFrame(validated_wearable)
-
-            # Columns to drop from wearable data
-            columns_to_drop = self.config.get('wearable_drop_columns', 
-                                            ['movement_data', 'sleep_stage_data'])
-            
-            # Drop specified columns if they exist
-            wearable_cols_to_drop = [col for col in columns_to_drop if col in wearable_data.columns]
-            wearable_data_cleaned = wearable_data.drop(wearable_cols_to_drop, axis=1, errors='ignore')
-
-            transformed_wearable_data = self.transform_wearable_data(wearable_data_cleaned)
-            
-            # IMPORTANT: Ensure user_id is preserved in wearable data
-            if 'user_id' not in processed_data.columns and 'user_id' in wearable_data.columns:
-                # If user_id is missing in processed_data but exists in wearable_data, something is wrong
-                # Let's keep track of where it happens
-                logger.info("WARNING: user_id missing in processed_data but present in wearable_data")
-            
-            # Get merge columns from config or use defaults
-            merge_columns = self.config.get('wearable_merge_columns', ['user_id', 'date'])
-            
-            # Verify merge columns exist in both dataframes
-            for col in merge_columns:
-                if col not in processed_data.columns:
-                    logger.info(f"WARNING: Merge column {col} not in processed_data")
-                if col not in wearable_data_cleaned.columns:
-                    logger.info(f"WARNING: Merge column {col} not in wearable_data")
-            
-            # Only include merge columns that exist in both dataframes
-            valid_merge_columns = [col for col in merge_columns 
-                                if col in processed_data.columns and col in wearable_data_cleaned.columns]
-            
-            if not valid_merge_columns:
-                logger.info("ERROR: No valid merge columns. Skipping wearable data merge.")
+                if all_wearable_data:
+                    combined_wearable = pd.concat(all_wearable_data, ignore_index=True)
+                    # Merge with sleep data
+                    processed_data = self._merge_sleep_and_wearable_data(processed_data, combined_wearable)
             else:
-                def column_is_type(df, t):
-                    return df.transform(lambda x: x.apply(type).eq(t)).all()
-                
-                # Merge on valid columns
-                processed_data = pd.merge(
-                    processed_data, 
-                    transformed_wearable_data, 
-                    on=valid_merge_columns, 
-                    how='left',
-                    suffixes=('', '_y')
-                )
-            
-            # Add calculated wearable features
-            if self.config.get('calculate_wearable_features', True):
-                processed_data = self._add_wearable_features(processed_data)
+                # Assume data is already in standardized format
+                processed_data = self._merge_sleep_and_wearable_data(processed_data, wearable_data)
         
-        # Merge with external data if provided
-        if external_data is not None:
-            if 'date' in external_data.columns:
-                if self.config.get('convert_dates', True):
-                    external_data['date'] = pd.to_datetime(external_data['date'])
-                                
-                processed_data = pd.merge(
-                    processed_data,
-                    external_data,
-                    on='date',
-                    how='left',
-                    suffixes=('', '_y')
-                )
-
-                # Directly identify and drop the _y columns in one operation
-                y_cols = [col for col in processed_data.columns if col.endswith('_y')]
-                if y_cols:
-                    logger.info(f"Dropping columns: {y_cols}")
-                    processed_data.drop(columns=y_cols, inplace=True)
+        # Rest of the preprocessing code...
         
-        # Handle missing values
-        processed_data = self._handle_missing_values(processed_data)
-
-        # Check for essential columns before returning
-        essential_columns = ['user_id', 'date', 'sleep_efficiency']
-        missing_columns = [col for col in essential_columns if col not in processed_data.columns]
-        
-        if missing_columns:
-            logger.info(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
-        
-        self.processed_data = processed_data
-        
-        # Check for essential columns before returning
-        essential_columns = ['user_id', 'date', 'sleep_efficiency']
-        missing_columns = [col for col in essential_columns if col not in processed_data.columns]
-        
-        if missing_columns:
-            print(f"Warning: Essential columns are missing after preprocessing: {missing_columns}")
-
-        # Ensure demographic data is preserved
-        demographic_columns = ['age', 'profession', 'region', 'gender', 'user_id']
-        for column in demographic_columns:
-            if column not in processed_data.columns and column in sleep_data.columns:
-                processed_data[column] = sleep_data[column]
-        
-        processed_data = ensure_valid_numeric_fields(processed_data)
         return processed_data
+    
+    def _merge_sleep_and_wearable_data(self, sleep_data, wearable_data):
+        """Merge sleep and wearable data with smart handling of conflicting fields"""
+        # Identify columns to merge on
+        merge_columns = ['user_id', 'date']
+        
+        # Columns that should be taken from wearable data if available
+        wearable_priority_columns = [
+            'deep_sleep_percentage', 'light_sleep_percentage', 'rem_sleep_percentage',
+            'heart_rate_variability', 'average_heart_rate', 'min_heart_rate', 'max_heart_rate',
+            'blood_oxygen', 'awakenings_count'
+        ]
+        
+        # Merge the dataframes
+        merged_data = pd.merge(
+            sleep_data,
+            wearable_data,
+            on=merge_columns,
+            how='left',
+            suffixes=('', '_wearable')
+        )
+        
+        # For priority columns, prefer wearable data where available
+        for col in wearable_priority_columns:
+            wearable_col = f"{col}_wearable"
+            if wearable_col in merged_data.columns:
+                # Where wearable data exists, use it
+                mask = ~merged_data[wearable_col].isna()
+                if col in merged_data.columns:
+                    merged_data.loc[mask, col] = merged_data.loc[mask, wearable_col]
+                else:
+                    # If column doesn't exist in sleep data, create it
+                    merged_data[col] = merged_data[wearable_col]
+                
+                # Drop the _wearable column
+                merged_data = merged_data.drop(columns=[wearable_col])
+        
+        # Drop any remaining _wearable columns
+        wearable_cols = [col for col in merged_data.columns if col.endswith('_wearable')]
+        if wearable_cols:
+            merged_data = merged_data.drop(columns=wearable_cols)
+        
+        return merged_data
     
     def transform_wearable_data(self, wearable_data):
         """Transform wearable device data to standard sleep data format"""

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 class DataRepository:
     """Data access layer for sleep and user data"""
     
-    def __init__(self, data_dir='data/raw'):
+    def __init__(self, data_dir='data/enhanced_demo/data'):
         self.data_dir = data_dir
         self.cache = {}
         os.makedirs(data_dir, exist_ok=True)
@@ -28,6 +28,28 @@ class DataRepository:
             return users_df[users_df['user_id'] == user_id]
         
         return users_df
+    
+    def get_user_profile(self, user_id):
+        """Get user profile data by user_id"""
+        # Check if in cache
+        cache_key = f"user_profile_{user_id}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+        
+        # Get all user data
+        user_data = self.get_user_data()
+        
+        # Filter to specific user
+        if user_data is not None and len(user_data) > 0:
+            user_profile = user_data[user_data['user_id'] == user_id]
+            if len(user_profile) > 0:
+                result = user_profile.iloc[0].to_dict()
+                # Cache result
+                self.cache[cache_key] = result
+                return result
+        
+        # Return empty dict if user not found
+        return {}
     
     def get_sleep_data(self, user_id=None, days=None):
         """Get sleep data, optionally filtered by user_id and recent days"""

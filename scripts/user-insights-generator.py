@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument(
         '--data-dir', 
         type=str, 
-        default='data/sample',
+        default='data/enhanced_demo/data',
         help='Directory containing the sleep data'
     )
     

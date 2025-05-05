@@ -1,7 +1,7 @@
 {
   "model_name": "Sleep Quality Prediction Model",
   "version": "1.0",
-  "created_date": "2025-05-04",
+  "created_date": "2025-05-05",
   "model_type": "LSTM Neural Network",
   "description": "Sequence-based deep learning model for sleep quality analysis and prediction",
   "features": [
@@ -24,7 +24,9 @@
     "season_Winter",
     "season_Spring",
     "season_Summer",
-    "season_Fall"
+    "season_Fall",
+    "light_sleep_percentage",
+    "blood_oxygen"
   ],
   "hyperparameters": {
     "hidden_size": 128,
@@ -35,14 +37,14 @@
     "epochs": 50
   },
   "architecture": {
-    "input_size": 20,
+    "input_size": 22,
     "hidden_size": 128,
     "num_layers": 2,
     "dropout": 0.2
   },
   "performance_metrics": {
-    "mse": 0.05303437262773514,
-    "rmse": 0.23029192914154664,
+    "mse": 0.05625797435641289,
+    "rmse": 0.23718763533627313,
     "features": [
       "sleep_duration_hours",
       "sleep_efficiency",
@@ -63,18 +65,20 @@
       "season_Winter",
       "season_Spring",
       "season_Summer",
-      "season_Fall"
+      "season_Fall",
+      "light_sleep_percentage",
+      "blood_oxygen"
     ]
   },
   "training_data": {
-    "num_users": 100,
-    "num_records": 5518,
-    "date_range": "2024-01-01 00:00:00 to 2024-03-31 00:00:00"
+    "num_users": 300,
+    "num_records": 77156,
+    "date_range": "2024-01-01 00:00:00 to 2024-12-31 00:00:00"
   },
   "sample_outputs": {
     "individual_prediction": {
       "user_id": "sample_user_01",
-      "date": "2025-05-03",
+      "date": "2025-05-04",
       "predicted_sleep_efficiency": 0.87,
       "prediction_confidence": 0.85,
       "sleep_score": 91,

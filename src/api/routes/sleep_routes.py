@@ -1,4 +1,5 @@
 # src/api/routes/sleep_routes.py
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, List
 
@@ -73,9 +74,9 @@ async def get_recommendation(user_id: str, days: int = 30, service: SleepService
        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/detailed-score/{user_id}", response_model=Dict)
-async def get_detailed_sleep_score(user_id: str, date: str = None, service: SleepService = Depends(get_sleep_service)):
+async def get_detailed_sleep_score(user_id: str, days: int = 200, service: SleepService = Depends(get_sleep_service)):
    """Get a detailed sleep score breakdown for a user's sleep record"""
    try:
-       return await service.analyze_sleep(user_id, date)
+       return await service.analyze_sleep(user_id, days)
    except Exception as e:
        raise HTTPException(status_code=500, detail=str(e))

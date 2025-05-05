@@ -19,7 +19,7 @@ from src.data_generation.sleep_data_generator import SleepDataGenerator
 from src.data_generation.wearable_data_generator import WearableDataGenerator
 from src.utils.constants import profession_categories
 
-def generate_user_profiles(num_users=100, config_path='src/config/data_generation_config.yaml'):
+def generate_user_profiles(num_users=300, config_path='src/config/data_generation_config.yaml'):
     """Generate synthetic user profiles for data generation."""
     base_gen = BaseDataGenerator(config_path)
     user_profiles = []

@@ -176,21 +176,24 @@ class FeatureEngineering:
         
         # Wearable features
         wearable_features = []
-        if include_wearable and 'device_sleep_duration' in feature_data.columns:
-            wearable_features = [
-                'device_sleep_duration', 'deep_sleep_percentage', 'light_sleep_percentage',
-                'rem_sleep_percentage', 'awake_percentage', 'average_heart_rate',
-                'min_heart_rate', 'max_heart_rate', 'heart_rate_variability',
-                'sleep_cycles', 'movement_intensity'
+        if include_wearable:
+            # Check for common wearable data fields
+            possible_wearable_features = [
+                'deep_sleep_percentage', 'light_sleep_percentage', 'rem_sleep_percentage', 
+                'awake_percentage', 'heart_rate_variability', 'average_heart_rate',
+                'min_heart_rate', 'max_heart_rate', 'blood_oxygen', 'respiratory_rate'
             ]
             
-            # Add discrepancy features only if they exist
-            if 'bedtime_discrepancy_minutes' in feature_data.columns:
-                discrepancy_features = [
-                    'bedtime_discrepancy_minutes', 'sleep_onset_discrepancy_minutes',
-                    'wake_time_discrepancy_minutes', 'duration_discrepancy_hours'
-                ]
-                wearable_features.extend(discrepancy_features)
+            # Use only features actually present in the data
+            wearable_features = [f for f in possible_wearable_features if f in feature_data.columns]
+            
+            # Add derived wearable features
+            if len(wearable_features) > 0:
+                derived_features = self._create_wearable_derived_features(feature_data)
+                for feat in derived_features.columns:
+                    if feat not in feature_data.columns:
+                        feature_data[feat] = derived_features[feat]
+                        wearable_features.append(feat)
         
         # External factor features
         external_features = []
@@ -198,17 +201,18 @@ class FeatureEngineering:
             # Weather features if available
             if 'temperature' in feature_data.columns:
                 weather_features = ['temperature', 'humidity', 'pressure', 'precipitation']
-                external_features.extend(weather_features)
+                external_features.extend([f for f in weather_features if f in feature_data.columns])
             
             # Activity features if available
             if 'steps' in feature_data.columns:
                 activity_features = ['steps', 'active_minutes', 'stress_level']
-                external_features.extend(activity_features)
+                external_features.extend
         
         # Combine all feature columns
-        feature_columns = basic_features + consistency_features + time_features + demographic_features + wearable_features + external_features
+        feature_columns = basic_features + consistency_features + time_features
+        feature_columns += demographic_features + wearable_features + external_features
         feature_columns = [col for col in feature_columns if col in feature_data.columns]
-        
+
         # Handle missing features that we expect to have
         expected_features = self.config.get('expected_features', [])
         for col in expected_features:
@@ -296,6 +300,54 @@ class FeatureEngineering:
             feature_data = feature_data.drop(['sleep_efficiency'], axis=1, errors='ignore')
         
         return feature_data, targets_df
+    
+    def _create_wearable_derived_features(self, data):
+        """Create derived features from wearable data"""
+        derived_features = pd.DataFrame(index=data.index)
+        
+        # HRV quality score (scaled 0-1)
+        if 'heart_rate_variability' in data.columns:
+            hrv = data['heart_rate_variability']
+            # HRV varies by age, but generally 20-60ms is normal range
+            derived_features['hrv_quality'] = hrv.apply(
+                lambda x: min(1.0, max(0.0, (x - 15) / 45)) if not pd.isna(x) else np.nan
+            )
+        
+        # Sleep stage balance - measure of how balanced sleep stages are
+        if all(col in data.columns for col in ['deep_sleep_percentage', 'rem_sleep_percentage']):
+            # Ideal: ~20% deep sleep, ~25% REM
+            deep = data['deep_sleep_percentage']
+            rem = data['rem_sleep_percentage']
+            
+            ideal_deep = 0.20
+            ideal_rem = 0.25
+            
+            deep_diff = (deep - ideal_deep).abs()
+            rem_diff = (rem - ideal_rem).abs()
+            
+            # Combine into a single score (0-1, higher is better)
+            derived_features['sleep_stage_balance'] = 1.0 - (deep_diff + rem_diff)
+            derived_features['sleep_stage_balance'] = derived_features['sleep_stage_balance'].clip(0, 1)
+        
+        # Heart rate dip (how much lower night HR is compared to typical daytime)
+        if 'average_heart_rate' in data.columns:
+            # Assume typical daytime HR is around 70-80 bpm
+            typical_day_hr = 75
+            night_hr = data['average_heart_rate']
+            
+            # Calculate dip percentage (normally 10-20% is healthy)
+            derived_features['hr_dip_percentage'] = (typical_day_hr - night_hr) / typical_day_hr
+            derived_features['hr_dip_percentage'] = derived_features['hr_dip_percentage'].clip(0, 0.5)
+        
+        # Blood oxygen quality (if available)
+        if 'blood_oxygen' in data.columns:
+            spo2 = data['blood_oxygen']
+            # Normal SpO2 is 95-100%
+            derived_features['blood_oxygen_quality'] = spo2.apply(
+                lambda x: min(1.0, max(0.0, (x - 90) / 10)) if not pd.isna(x) else np.nan
+            )
+        
+        return derived_features
 
     def _get_season(self, month):
         """Determine season from month (Northern Hemisphere)"""
