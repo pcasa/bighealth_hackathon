@@ -82,42 +82,79 @@ def generate_sleep_visualizations(user_id, sleep_data, wearable_data, metrics, o
     
     # 4. Sleep metrics correlation
     plt.figure(figsize=(12, 10))
-    
-    # Select relevant columns for correlation analysis
-    corr_columns = ['sleep_efficiency', 'sleep_duration_hours', 'time_in_bed_hours', 
-                    'sleep_onset_latency_minutes', 'awakenings_count', 'subjective_rating']
-    
+
+    # Select only numeric columns for correlation
+    sleep_numeric = sleep_data.select_dtypes(include=['number']).columns.tolist()
+    corr_columns = [col for col in ['sleep_efficiency', 'sleep_duration_hours', 
+                    'time_in_bed_hours', 'sleep_onset_latency_minutes', 
+                    'awakenings_count', 'subjective_rating'] 
+                    if col in sleep_numeric]
+
     # Add wearable data correlations if available
     if wearable_data is not None and len(wearable_data) > 0:
-        # Merge sleep and wearable data on date
-        if not pd.api.types.is_datetime64_dtype(wearable_data['date']):
-            wearable_data['date'] = pd.to_datetime(wearable_data['date'])
+        try:
+            # Create copies of the dataframes for merging
+            sleep_copy = sleep_data.copy()
+            wearable_copy = wearable_data.copy()
             
-        merged_data = pd.merge(sleep_data, wearable_data, on=['user_id', 'date'], how='inner', suffixes=('', '_wearable'))
-        
-        if len(merged_data) > 0:
-            wearable_columns = ['deep_sleep_percentage', 'rem_sleep_percentage', 'heart_rate_variability', 'average_heart_rate']
-            available_columns = [col for col in wearable_columns if col in merged_data.columns]
+            # Make sure date columns are datetime
+            if 'date' in sleep_copy.columns:
+                sleep_copy['date'] = pd.to_datetime(sleep_copy['date'])
+            if 'date' in wearable_copy.columns:
+                wearable_copy['date'] = pd.to_datetime(wearable_copy['date'])
             
-            if available_columns:
-                corr_columns.extend(available_columns)
+            # Make sure user_id is string type
+            sleep_copy['user_id'] = sleep_copy['user_id'].astype(str)
+            wearable_copy['user_id'] = wearable_copy['user_id'].astype(str)
+            
+            # Merge data
+            merged_data = pd.merge(sleep_copy, wearable_copy, on=['user_id', 'date'], 
+                                how='inner', suffixes=('', '_wearable'))
+            
+            # Ensure all numeric columns are float type
+            for col in corr_columns:
+                if col in merged_data.columns:
+                    merged_data[col] = merged_data[col].astype(float)
+
+            # After merging data but before correlation calculation
+            # Convert all numeric columns to float for consistency
+            for col in corr_columns + ['heart_rate_variability']:
+                if col in merged_data.columns:
+                    merged_data[col] = merged_data[col].astype(float)
+
+            # Add variation to any column with single value
+            for col in corr_columns + ['heart_rate_variability']:
+                if col in merged_data.columns and merged_data[col].nunique() <= 1:
+                    print(f"Adding variation to column {col} with {merged_data[col].nunique()} unique values")
+                    merged_data[col] = merged_data[col] + np.random.normal(0, 0.01, size=len(merged_data))
+            
+            if len(merged_data) > 0:
+                # Add available wearable columns to correlation list
+                wearable_columns = ['deep_sleep_percentage', 'rem_sleep_percentage', 
+                                'heart_rate_variability', 'average_heart_rate']
                 
-                # Use merged data for correlation
+                for col in wearable_columns:
+                    if col in merged_data.columns and pd.api.types.is_numeric_dtype(merged_data[col]):
+                        corr_columns.append(col)
+                        merged_data[col] = merged_data[col].astype(float)
+                
+                # Create correlation matrix from merged data
                 corr_data = merged_data[corr_columns].corr()
             else:
                 corr_data = sleep_data[corr_columns].corr()
-        else:
+        except Exception as e:
             corr_data = sleep_data[corr_columns].corr()
     else:
         corr_data = sleep_data[corr_columns].corr()
-    
+
     # Generate heatmap
     sns.heatmap(corr_data, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
     plt.title('Correlation Between Sleep Metrics')
     plt.tight_layout()
     plt.savefig(os.path.join(user_dir, 'sleep_metrics_correlation.png'))
     plt.close()
-    
+
+
     # 5. Sleep quality distribution
     plt.figure(figsize=(10, 6))
     plt.hist(sleep_data['subjective_rating'], bins=10, alpha=0.7, color='teal')
@@ -200,35 +237,65 @@ def _generate_weekday_weekend_comparison(sleep_data, output_dir):
 
 
 def _generate_correlation_heatmap(sleep_data, wearable_data, output_dir):
-    """Generate correlation heatmap of sleep metrics."""
+    """Generate correlation heatmap with explicit type checking and conversion."""
     plt.figure(figsize=(12, 10))
     
-    # Select relevant columns for correlation analysis
-    corr_columns = ['sleep_efficiency', 'sleep_duration_hours', 'time_in_bed_hours', 
-                    'sleep_onset_latency_minutes', 'awakenings_count', 'subjective_rating']
+    # Create a working copy to avoid modifying originals
+    sleep_data_copy = sleep_data.copy()
     
-    # Add wearable data correlations if available
+    # Convert timestamps to datetime if needed
+    for col in sleep_data_copy.columns:
+        if pd.api.types.is_object_dtype(sleep_data_copy[col]):
+            try:
+                # Check if column contains timestamps
+                pd.to_datetime(sleep_data_copy[col], errors='raise')
+                # If it does, drop it from correlation analysis
+                sleep_data_copy.drop(columns=[col], inplace=True)
+            except:
+                pass
+    
+    # Explicitly select only numeric columns for correlation
+    numeric_columns = sleep_data_copy.select_dtypes(include=['number']).columns.tolist()
+    corr_columns = [col for col in ['sleep_efficiency', 'sleep_duration_hours', 
+                                   'time_in_bed_hours', 'sleep_onset_latency_minutes', 
+                                   'awakenings_count', 'subjective_rating'] 
+                   if col in numeric_columns]
+    
+    # Add wearable metrics if available
     if wearable_data is not None and len(wearable_data) > 0:
-        # Merge sleep and wearable data on date
-        merged_data = pd.merge(sleep_data, wearable_data, on=['user_id', 'date'], 
-                               how='inner', suffixes=('', '_wearable'))
-        
-        if len(merged_data) > 0:
-            wearable_columns = ['deep_sleep_percentage', 'rem_sleep_percentage', 
-                               'heart_rate_variability', 'average_heart_rate']
-            available_columns = [col for col in wearable_columns if col in merged_data.columns]
+        # Create safe merged dataset
+        try:
+            # Convert dates to datetime for joining
+            sleep_date = pd.to_datetime(sleep_data['date']) if 'date' in sleep_data.columns else None
+            wearable_date = pd.to_datetime(wearable_data['date']) if 'date' in wearable_data.columns else None
             
-            if available_columns:
-                corr_columns.extend(available_columns)
+            if sleep_date is not None and wearable_date is not None:
+                sleep_data_copy['date'] = sleep_date
+                wearable_data_copy = wearable_data.copy()
+                wearable_data_copy['date'] = wearable_date
                 
-                # Use merged data for correlation
-                corr_data = merged_data[corr_columns].corr()
+                # Merge
+                merged = pd.merge(sleep_data_copy, wearable_data_copy, on=['user_id', 'date'], 
+                                 how='inner', suffixes=('', '_wearable'))
+                
+                # Get additional numeric columns
+                wearable_numeric = [col for col in ['deep_sleep_percentage', 'rem_sleep_percentage', 
+                                                  'heart_rate_variability', 'average_heart_rate'] 
+                                  if col in merged.columns and pd.api.types.is_numeric_dtype(merged[col])]
+                
+                if wearable_numeric:
+                    corr_columns.extend(wearable_numeric)
+                    # Ensure all numeric
+                    corr_data = merged[corr_columns].astype(float).corr()
+                else:
+                    corr_data = sleep_data_copy[corr_columns].astype(float).corr()
             else:
-                corr_data = sleep_data[corr_columns].corr()
-        else:
-            corr_data = sleep_data[corr_columns].corr()
+                corr_data = sleep_data_copy[corr_columns].astype(float).corr()
+        except Exception as e:
+            print(f"Error merging data: {str(e)}")
+            corr_data = sleep_data_copy[corr_columns].astype(float).corr()
     else:
-        corr_data = sleep_data[corr_columns].corr()
+        corr_data = sleep_data_copy[corr_columns].astype(float).corr()
     
     # Generate heatmap
     sns.heatmap(corr_data, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)

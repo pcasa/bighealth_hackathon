@@ -8,7 +8,7 @@ from src.core.models.data_models import SleepEntry, WearableData, UserProfile
 from src.core.models.improved_sleep_score import ImprovedSleepScoreCalculator
 from src.utils.data_validation_fix import ensure_sleep_data_format
 from src.utils.ensure_valid_numeric_fields import ensure_valid_numeric_fields
-from src.core.wearables.wearable_tranformer_manager import WearableTransformerManager
+from src.core.wearables.wearable_transformer_manager import WearableTransformerManager
 
 
 
