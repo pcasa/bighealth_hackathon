@@ -166,8 +166,8 @@ Analysis types:
 - Impact assessment by demographic factor
 
 ## Performance Metrics
-- mse: 0.05970177799463272
-- rmse: 0.2443394728541271
+- mse: 0.06670406460762024
+- rmse: 0.2582713003947985
 - features: ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate', 'age_normalized', 'profession_healthcare', 'profession_tech', 'profession_service', 'profession_education', 'profession_office', 'profession_other', 'season_Winter', 'season_Spring', 'season_Summer', 'season_Fall', 'light_sleep_percentage', 'blood_oxygen']
 
 ## Limitations

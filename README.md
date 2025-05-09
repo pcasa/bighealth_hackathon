@@ -12,7 +12,7 @@ pip install uv
 
 ## Pytorch
 
-**This needs to be installed seperately!**
+**This needs to be installed separately!**
 
 ```
 uv pip install torch

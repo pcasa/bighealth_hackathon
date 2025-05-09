@@ -43,8 +43,8 @@
     "dropout": 0.2
   },
   "performance_metrics": {
-    "mse": 0.05970177799463272,
-    "rmse": 0.2443394728541271,
+    "mse": 0.06670406460762024,
+    "rmse": 0.2582713003947985,
     "features": [
       "sleep_duration_hours",
       "sleep_efficiency",
@@ -72,7 +72,7 @@
   },
   "training_data": {
     "num_users": 100,
-    "num_records": 5250,
+    "num_records": 5208,
     "date_range": "2024-01-01 00:00:00 to 2024-03-31 00:00:00"
   },
   "sample_outputs": {
