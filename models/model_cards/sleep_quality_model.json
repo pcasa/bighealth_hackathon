@@ -43,8 +43,8 @@
     "dropout": 0.2
   },
   "performance_metrics": {
-    "mse": 0.06670406460762024,
-    "rmse": 0.2582713003947985,
+    "mse": 0.04624539986252785,
+    "rmse": 0.21504743630773152,
     "features": [
       "sleep_duration_hours",
       "sleep_efficiency",
@@ -72,7 +72,7 @@
   },
   "training_data": {
     "num_users": 100,
-    "num_records": 5208,
+    "num_records": 5533,
     "date_range": "2024-01-01 00:00:00 to 2024-03-31 00:00:00"
   },
   "sample_outputs": {
@@ -82,9 +82,37 @@
       "predicted_sleep_efficiency": 0.87,
       "prediction_confidence": 0.85,
       "sleep_score": 91,
-      "next_night_prediction": {
-        "expected_sleep_efficiency": 0.88,
-        "confidence": 0.7999999999999999
+      "future_predictions": {
+        "next_night_efficiency": {
+          "value": 0.88,
+          "confidence": 0.82,
+          "factors": [
+            "recent trend",
+            "consistent bedtime",
+            "profession impact"
+          ]
+        },
+        "optimal_bedtime": {
+          "time": "22:45",
+          "confidence": 0.78,
+          "recommendation": "Earlier than your recent average to increase deep sleep percentage"
+        },
+        "optimal_waketime": {
+          "time": "06:30",
+          "confidence": 0.81,
+          "recommendation": "Aligns with your natural sleep cycle completion"
+        },
+        "trend_prediction": {
+          "direction": "improving",
+          "magnitude": "moderate",
+          "confidence": 0.75,
+          "duration": "7 days"
+        },
+        "prediction_horizon": {
+          "reliable_forecast": "5 days",
+          "data_quality": "good",
+          "consistency_score": 0.82
+        }
       }
     },
     "sleep_score_with_details": {
@@ -186,11 +214,14 @@
     ]
   },
   "future_predictions": {
-    "next_night_efficiency": "Predicted sleep efficiency for the following night",
-    "optimal_bedtime": "Recommended bedtime for maximizing sleep quality",
-    "optimal_waketime": "Recommended wake time for maximizing sleep quality",
-    "trend_prediction": "Expected improvement, stability, or decline in sleep quality",
-    "prediction_horizon": "1-7 days depending on data quality and consistency"
+    "next_night_efficiency": "Predicted sleep efficiency for the following night based on recent patterns, external factors, and user behavior trends",
+    "optimal_bedtime": "Personalized recommended bedtime calculated from historical data showing best sleep quality outcomes, adjusted for profession and lifestyle factors",
+    "optimal_waketime": "Recommended wake time that aligns with natural sleep cycles and anticipated sleep quality, providing guidance for alarm settings",
+    "trend_prediction": "Expected improvement, stability, or decline in sleep quality with early warnings for developing insomnia patterns",
+    "prediction_horizon": "1-7 days depending on data quality and consistency",
+    "recovery_timeline": "Estimated time needed to return to baseline sleep quality after a period of poor sleep",
+    "insomnia_probability": "Risk assessment for experiencing severe sleep difficulties in the coming days based on current patterns",
+    "consistency_impact": "Quantified prediction of sleep quality improvement from adopting more consistent sleep-wake schedules"
   },
   "intended_use": "Analyzing sleep patterns and providing personalized sleep quality scores and recommendations",
   "limitations": [

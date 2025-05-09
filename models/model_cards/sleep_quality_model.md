@@ -48,9 +48,37 @@ LSTM Neural Network
   "predicted_sleep_efficiency": 0.87,
   "prediction_confidence": 0.85,
   "sleep_score": 91,
-  "next_night_prediction": {
-    "expected_sleep_efficiency": 0.88,
-    "confidence": 0.7999999999999999
+  "future_predictions": {
+    "next_night_efficiency": {
+      "value": 0.88,
+      "confidence": 0.82,
+      "factors": [
+        "recent trend",
+        "consistent bedtime",
+        "profession impact"
+      ]
+    },
+    "optimal_bedtime": {
+      "time": "22:45",
+      "confidence": 0.78,
+      "recommendation": "Earlier than your recent average to increase deep sleep percentage"
+    },
+    "optimal_waketime": {
+      "time": "06:30",
+      "confidence": 0.81,
+      "recommendation": "Aligns with your natural sleep cycle completion"
+    },
+    "trend_prediction": {
+      "direction": "improving",
+      "magnitude": "moderate",
+      "confidence": 0.75,
+      "duration": "7 days"
+    },
+    "prediction_horizon": {
+      "reliable_forecast": "5 days",
+      "data_quality": "good",
+      "consistency_score": 0.82
+    }
   }
 }
 ```
@@ -127,11 +155,14 @@ LSTM Neural Network
 - **anomaly_detection**: Detection of unusual sleep patterns compared to user baseline
 
 ## Future Predictions
-- **next_night_efficiency**: Predicted sleep efficiency for the following night
-- **optimal_bedtime**: Recommended bedtime for maximizing sleep quality
-- **optimal_waketime**: Recommended wake time for maximizing sleep quality
-- **trend_prediction**: Expected improvement, stability, or decline in sleep quality
+- **next_night_efficiency**: Predicted sleep efficiency for the following night based on recent patterns, external factors, and user behavior trends
+- **optimal_bedtime**: Personalized recommended bedtime calculated from historical data showing best sleep quality outcomes, adjusted for profession and lifestyle factors
+- **optimal_waketime**: Recommended wake time that aligns with natural sleep cycles and anticipated sleep quality, providing guidance for alarm settings
+- **trend_prediction**: Expected improvement, stability, or decline in sleep quality with early warnings for developing insomnia patterns
 - **prediction_horizon**: 1-7 days depending on data quality and consistency
+- **recovery_timeline**: Estimated time needed to return to baseline sleep quality after a period of poor sleep
+- **insomnia_probability**: Risk assessment for experiencing severe sleep difficulties in the coming days based on current patterns
+- **consistency_impact**: Quantified prediction of sleep quality improvement from adopting more consistent sleep-wake schedules
 
 ## Sleep Pattern Classification
 The model can detect the following sleep patterns:
@@ -166,8 +197,8 @@ Analysis types:
 - Impact assessment by demographic factor
 
 ## Performance Metrics
-- mse: 0.06670406460762024
-- rmse: 0.2582713003947985
+- mse: 0.04624539986252785
+- rmse: 0.21504743630773152
 - features: ['sleep_duration_hours', 'sleep_efficiency', 'awakenings_count', 'total_awake_minutes', 'deep_sleep_percentage', 'rem_sleep_percentage', 'sleep_onset_latency_minutes', 'heart_rate_variability', 'average_heart_rate', 'age_normalized', 'profession_healthcare', 'profession_tech', 'profession_service', 'profession_education', 'profession_office', 'profession_other', 'season_Winter', 'season_Spring', 'season_Summer', 'season_Fall', 'light_sleep_percentage', 'blood_oxygen']
 
 ## Limitations

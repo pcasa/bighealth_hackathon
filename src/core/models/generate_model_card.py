@@ -99,11 +99,14 @@ def generate_model_card_with_samples(model, filepath, performance_metrics=None, 
         
         # Future predictions
         "future_predictions": {
-            "next_night_efficiency": "Predicted sleep efficiency for the following night",
-            "optimal_bedtime": "Recommended bedtime for maximizing sleep quality",
-            "optimal_waketime": "Recommended wake time for maximizing sleep quality",
-            "trend_prediction": "Expected improvement, stability, or decline in sleep quality",
-            "prediction_horizon": "1-7 days depending on data quality and consistency"
+            "next_night_efficiency": "Predicted sleep efficiency for the following night based on recent patterns, external factors, and user behavior trends",
+            "optimal_bedtime": "Personalized recommended bedtime calculated from historical data showing best sleep quality outcomes, adjusted for profession and lifestyle factors",
+            "optimal_waketime": "Recommended wake time that aligns with natural sleep cycles and anticipated sleep quality, providing guidance for alarm settings",
+            "trend_prediction": "Expected improvement, stability, or decline in sleep quality with early warnings for developing insomnia patterns",
+            "prediction_horizon": "1-7 days depending on data quality and consistency",
+            "recovery_timeline": "Estimated time needed to return to baseline sleep quality after a period of poor sleep",
+            "insomnia_probability": "Risk assessment for experiencing severe sleep difficulties in the coming days based on current patterns",
+            "consistency_impact": "Quantified prediction of sleep quality improvement from adopting more consistent sleep-wake schedules"
         },
         
         "intended_use": "Analyzing sleep patterns and providing personalized sleep quality scores and recommendations",
@@ -367,16 +370,41 @@ def generate_sample_prediction(model):
     except:
         prediction['sleep_score'] = 83
     
-    # Clean up prediction for display - only show essential elements
+    # Clean up prediction for display - only show essential elements and add future predictions
     clean_prediction = {
         'user_id': prediction['user_id'],
         'date': prediction['date'],
         'predicted_sleep_efficiency': round(float(prediction['predicted_sleep_efficiency']), 3),
         'prediction_confidence': float(prediction['prediction_confidence']),
         'sleep_score': prediction['sleep_score'],
-        'next_night_prediction': {
-            'expected_sleep_efficiency': round(float(prediction['predicted_sleep_efficiency']) + 0.01, 3),
-            'confidence': float(prediction['prediction_confidence']) - 0.05
+        # Add example future predictions
+        'future_predictions': {
+            'next_night_efficiency': {
+                'value': round(float(prediction.get('predicted_sleep_efficiency', 0.87)) + 0.01, 3),
+                'confidence': 0.82,
+                'factors': ['recent trend', 'consistent bedtime', 'profession impact']
+            },
+            'optimal_bedtime': {
+                'time': '22:45',
+                'confidence': 0.78,
+                'recommendation': 'Earlier than your recent average to increase deep sleep percentage'
+            },
+            'optimal_waketime': {
+                'time': '06:30',
+                'confidence': 0.81,
+                'recommendation': 'Aligns with your natural sleep cycle completion'
+            },
+            'trend_prediction': {
+                'direction': 'improving',
+                'magnitude': 'moderate',
+                'confidence': 0.75,
+                'duration': '7 days'
+            },
+            'prediction_horizon': {
+                'reliable_forecast': '5 days',
+                'data_quality': 'good',
+                'consistency_score': 0.82
+            }
         }
     }
     
@@ -412,12 +440,30 @@ def generate_sample_sleep_score(model):
         score_details = {
             'total_score': 82,
             'component_scores': {
-                'duration': 92,
-                'efficiency': 88,
-                'onset': 95,
-                'continuity': 85,
-                'timing': 75,
-                'subjective': 80
+                'duration': {
+                    'score': 92.0,
+                    'description': "Optimal sleep duration of 7-9 hours"
+                },
+                'efficiency': {
+                    'score': 88.0,
+                    'description': "Good sleep efficiency with minimal time awake"
+                },
+                'onset': {
+                    'score': 95.0,
+                    'description': "Fall asleep quickly within optimal range"
+                },
+                'continuity': {
+                    'score': 85.0,
+                    'description': "Few brief awakenings"
+                },
+                'timing': {
+                    'score': 75.0,
+                    'description': "Good sleep timing slightly off optimal window"
+                },
+                'subjective': {
+                    'score': 80.0,
+                    'description': "Good subjective sleep quality"
+                }
             },
             'demographic_adjustment': 2,
             'adjustment_reasons': [
