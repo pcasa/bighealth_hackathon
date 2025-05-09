@@ -196,6 +196,56 @@ Containerized setup for easy local deployment:
 - Sets up volume mounts for persistent data and models
 - Supports scaling for batch processing
 
+## New Features
+
+### Enhanced Sleep Score Analytics
+The app now includes advanced demographic and temporal analytics capabilities:
+- Analyze sleep scores across different demographic groups (age, profession, region)
+- Identify trends specific to demographic segments
+- Track sleep quality changes over time with seasonal adjustments
+- Generate comprehensive reports with visualizations
+
+### Temporal Pattern Analysis
+The app can now detect and analyze temporal patterns in sleep data:
+- Identify cyclical sleep quality patterns
+- Detect seasonal effects on sleep quality
+- Track consistent improvement or decline trends
+- Identify stress events and their impact on sleep
+
+### Recommendation Personalization
+Recommendations are now more personalized based on:
+- Profession-specific sleep challenges and solutions
+- Region and culture-specific adjustments
+- Age-appropriate guidance
+- Pattern-specific interventions
+
+### Advanced Visualizations 
+New visualization tools provide deeper insights:
+- Sleep metric correlation heatmaps
+- Weekly progression charts by demographic groups
+- Trend comparison across different user segments
+- Profession and region cross-analysis visualizations
+
+### Improved Wearable Data Integration
+Enhanced support for wearable device data:
+- Better handling of device-specific data formats
+- Improved data transformation for cross-device compatibility
+- More accurate sleep stage analysis
+- Enhanced heart rate variability (HRV) analysis
+
+### Report Generation
+Generate comprehensive sleep reports for users:
+- HTML and Markdown format reports
+- Personalized insights based on user data
+- Visual representations of sleep trends
+- Actionable recommendations
+
+### User Experience Improvements
+- Enhanced visualization of sleep data over time
+- More intuitive presentation of sleep metrics
+- Personalized dashboards with key insights
+- Email report delivery capabilities
+
 ## Technology Stack
 
 - Python for core implementation
@@ -209,17 +259,45 @@ Containerized setup for easy local deployment:
 1. Clone this repository
 2. Install UV package manager
 3. Install dependencies: `uv pip install -r requirements.txt`
-4. Generate training data: `python scripts/generate_training_data.py`
-5. Train models: `python scripts/train_models.py`
-6. Validate models: `python scripts/validate_models.py`
+4. Generate training data: `uv run scripts/generate_training_data.py`
+5. Train models: `uv run scripts/train_models.py`
+6. Validate models: `uv run scripts/validate_models.py`
 7. Run Docker: `docker-compose up`
 8. Import n8n workflows from n8n_workflows/ directory
 
-# Sleep Insights App - Recommendation System
+## Enhanced Demo
+
+For a more comprehensive demonstration of the system's capabilities:
+
+```
+uv run scripts/run_enhanced_demo.py --user-count 100 --output-dir data/enhanced_demo
+```
+
+This will generate a more realistic dataset with:
+- Users created throughout the year
+- Sleep data for up to 4 months after user creation
+- A percentage of users with wearable data
+- Simulated temporal patterns and trends
+- Demographic-based variations in sleep patterns
+
+## Analyzing Data
+
+Use the enhanced analytics tools to perform demographic analysis:
+
+```
+uv run scripts/run_enhanced_analytics.py
+```
+
+This will generate reports in the `reports/sleep_analysis_[timestamp]` directory with:
+- Static analysis of sleep patterns by demographic groups
+- Trend analysis showing how sleep patterns evolve over time
+- Cross-dimensional insights comparing different demographic factors
+
+## Sleep Insights App - Recommendation System
 
 The Sleep Insights App includes a personalized recommendation system that analyzes sleep patterns from user-submitted form data and provides tailored guidance to help users improve their sleep quality.
 
-## Form Data Collection
+### Form Data Collection
 
 Our system primarily relies on daily sleep form submissions that capture:
 
@@ -234,27 +312,27 @@ Our system primarily relies on daily sleep form submissions that capture:
 
 This user-reported data provides valuable insights without requiring wearable devices, making the app accessible to all users.
 
-## Recommendation Features
+### Recommendation Features
 
-### Progress Tracking
+#### Progress Tracking
 - Analyzes sleep efficiency trends over time
 - Identifies improvement and regression patterns
 - Calculates consistency in sleep timing and tracking
 - Detects severe insomnia patterns (multiple nights without sleep)
 
-### Personalized Messaging
+#### Personalized Messaging
 - Adapts message tone based on user's progress
 - Provides encouragement during regression periods
 - Celebrates improvements and achievements
 - Offers actionable suggestions relevant to detected patterns
 - Provides specialized support for severe insomnia cases
 
-### Varied Content
+#### Varied Content
 - Maintains engagement by avoiding repetitive messages
 - References specific sleep metrics to provide context
 - Progressively introduces sleep hygiene concepts
 
-## How Recommendations Work
+### How Recommendations Work
 
 The recommendation engine follows this process:
 
@@ -270,7 +348,7 @@ The recommendation engine follows this process:
 6. **Personalization**: The message is personalized with the user's specific metrics
 7. **Delivery**: Recommendations are delivered through the user interface
 
-## Sample Recommendations
+### Sample Recommendations
 
 Different messages are provided based on the user's current status:
 
@@ -283,7 +361,7 @@ Different messages are provided based on the user's current status:
 **For Sleepless Nights:**
 > "You've reported 3 nights without sleep recently. This is a significant pattern that deserves professional attention - please consider consulting with a healthcare provider specializing in sleep."
 
-## Integration with n8n
+### Integration with n8n
 
 The recommendation system integrates with n8n workflows to:
 1. Process incoming sleep form submissions
@@ -291,13 +369,13 @@ The recommendation system integrates with n8n workflows to:
 3. Generate recommendations
 4. Deliver recommendations through preferred channels
 
-## Configuration
+### Configuration
 
 The recommendation system can be configured through:
 - `config/recommendations_config.yaml`: General settings for analysis and delivery
 - `config/message_templates.json`: The library of recommendation messages
 
-## Using the Recommendation API
+### Using the Recommendation API
 
 To generate recommendations programmatically:
 
@@ -312,7 +390,6 @@ progress_data = recommendation_engine.analyze_progress(user_id, sleep_data)
 
 # Generate a personalized recommendation
 message = recommendation_engine.generate_recommendation(user_id, progress_data)
-
 ```
 
 ## Directory Structure
